@@ -19,7 +19,6 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.18.0",
-    "firebaseui": "^6.1.0",
     "lucide-react": "^0.462.0",
     "motion": "^12.23.24",
     "react": "^18.3.1",
