@@ -1,0 +1,67 @@
+{
+  "collections": [
+    {
+      "name": "users",
+      "description": "Stores user profiles.",
+      "documents": [
+        {
+          "id": "USER_ID",
+          "fields": [
+            { "name": "email", "type": "string" },
+            { "name": "displayName", "type": "string" },
+            { "name": "createdAt", "type": "timestamp" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "inspections",
+      "description": "Stores apartment inspections.",
+      "documents": [
+        {
+          "id": "INSPECTION_ID",
+          "fields": [
+            { "name": "userId", "type": "string" },
+            { "name": "landlordName", "type": "string" },
+            { "name": "landlordPhone", "type": "string" },
+            { "name": "propertyName", "type": "string" },
+            { "name": "propertyAddress", "type": "string" },
+            { "name": "checklistData", "type": "map" },
+            { "name": "images", "type": "array" },
+            { "name": "createdAt", "type": "timestamp" },
+            { "name": "updatedAt", "type": "timestamp" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "properties",
+      "description": "Stores properties for the dropdown.",
+      "documents": [
+        {
+          "id": "PROPERTY_ID",
+          "fields": [
+            { "name": "name", "type": "string" },
+            { "name": "address", "type": "string" },
+            { "name": "landlordName", "type": "string" },
+            { "name": "landlordPhone", "type": "string" },
+            { "name": "createdAt", "type": "timestamp" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "templates",
+      "description": "Stores checklist templates.",
+      "documents": [
+        {
+          "id": "TEMPLATE_ID",
+          "fields": [
+            { "name": "sections", "type": "array" },
+            { "name": "updatedAt", "type": "timestamp" }
+          ]
+        }
+      ]
+    }
+  ]
+}

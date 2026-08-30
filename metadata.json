@@ -1,0 +1,6 @@
+{
+  "name": "TryViet Inspection Checklist",
+  "description": "A mobile-friendly apartment inspection checklist for TryViet in Da Nang.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
