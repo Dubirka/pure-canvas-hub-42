@@ -12,18 +12,22 @@ export const signInWithGoogle = async () => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     // Optionally create a user doc in firestore
-    const userRef = doc(db, 'users', result.user.uid);
-    const userDoc = await getDoc(userRef);
-    if (!userDoc.exists()) {
-      await setDoc(userRef, {
-        email: result.user.email,
-        displayName: result.user.displayName,
-        createdAt: Timestamp.now()
-      });
+    try {
+      const userRef = doc(db, 'users', result.user.uid);
+      const userDoc = await getDoc(userRef);
+      if (!userDoc.exists()) {
+        await setDoc(userRef, {
+          email: result.user.email,
+          displayName: result.user.displayName,
+          createdAt: Timestamp.now()
+        });
+      }
+    } catch (firestoreErr) {
+      console.warn("Could not save user profile doc (non-fatal):", firestoreErr);
     }
     return result.user;
-  } catch (error) {
-    console.error("Error signing in with Google", error);
+  } catch (error: any) {
+    console.error("Error signing in with Google:", error);
     throw error;
   }
 };

@@ -42,24 +42,61 @@ interface Inspection {
   updatedAt: any;
 }
 
+export type AuthUser = { uid: string; displayName?: string | null; email?: string | null; isAnonymous?: boolean };
+
 export default function Index() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    const saved = localStorage.getItem('tryviet_active_user');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'checklist'>('login');
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
       if (currentUser) {
+        const u = { uid: currentUser.uid, displayName: currentUser.displayName, email: currentUser.email };
+        setUser(u);
+        localStorage.setItem('tryviet_active_user', JSON.stringify(u));
         setCurrentView(v => v === 'login' ? 'dashboard' : v);
       } else {
-        setCurrentView('login');
+        const guest = localStorage.getItem('tryviet_active_user');
+        if (guest) {
+          setUser(JSON.parse(guest));
+          setCurrentView(v => v === 'login' ? 'dashboard' : v);
+        } else {
+          setUser(null);
+          setCurrentView('login');
+        }
       }
       setLoadingAuth(false);
     });
     return () => unsubscribe();
   }, []);
+
+  const handleLogout = async () => {
+    localStorage.removeItem('tryviet_active_user');
+    setUser(null);
+    setCurrentView('login');
+    try {
+      await logout();
+    } catch (e) {
+      console.warn("Logout error:", e);
+    }
+  };
+
+  const handleGuestLogin = () => {
+    const guestUser: AuthUser = {
+      uid: 'guest_inspector',
+      displayName: 'Guest Inspector',
+      email: 'inspector@tryviet.com',
+      isAnonymous: true
+    };
+    localStorage.setItem('tryviet_active_user', JSON.stringify(guestUser));
+    setUser(guestUser);
+    setCurrentView('dashboard');
+  };
 
   if (loadingAuth) {
     return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={32} /></div>;
@@ -84,7 +121,7 @@ export default function Index() {
             </div>
           </div>
           {user && (
-            <button onClick={logout} className="text-slate-400 hover:text-slate-600 transition-colors p-2 flex items-center gap-2 text-sm font-medium">
+            <button onClick={handleLogout} className="text-slate-400 hover:text-slate-600 transition-colors p-2 flex items-center gap-2 text-sm font-medium">
               <LogOut size={18} />
               <span className="hidden sm:inline">Logout</span>
             </button>
@@ -92,7 +129,7 @@ export default function Index() {
         </div>
       </header>
 
-      {currentView === 'login' && <LoginView />}
+      {currentView === 'login' && <LoginView onGuestLogin={handleGuestLogin} />}
       {currentView === 'dashboard' && user && <DashboardView user={user} onOpenChecklist={(id) => {
         setCurrentInspectionId(id);
         setCurrentView('checklist');
@@ -102,33 +139,78 @@ export default function Index() {
   );
 }
 
-function LoginView() {
+function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const handleLogin = async () => {
     try {
       setLoading(true);
+      setErrorMessage(null);
       await signInWithGoogle();
-    } catch (e) {
-      alert("Failed to sign in");
+    } catch (e: any) {
+      console.error("Login failure details:", e);
+      if (e.code === 'auth/unauthorized-domain') {
+        setErrorMessage(`Domain unauthorized (${window.location.hostname}). Add it to Firebase Console > Authentication > Settings > Authorized Domains, or use Guest Inspector mode below.`);
+      } else if (e.code === 'auth/popup-blocked') {
+        setErrorMessage("Sign-in popup was blocked by your browser. Please allow popups for this site, or use Guest Inspector mode.");
+      } else if (e.code === 'auth/popup-closed-by-user') {
+        setErrorMessage("Sign-in popup was closed before completing.");
+      } else if (e.code === 'auth/operation-not-allowed') {
+        setErrorMessage("Google Sign-In is not enabled in Firebase Console > Authentication > Sign-in method.");
+      } else {
+        setErrorMessage(e.message || "Failed to sign in. Check console for details.");
+      }
     } finally {
       setLoading(false);
     }
   };
+
   return (
-    <main className="max-w-md mx-auto mt-20 p-6 bg-white rounded-2xl shadow-sm border border-slate-200 text-center">
+    <main className="max-w-md mx-auto mt-16 p-6 bg-white rounded-2xl shadow-sm border border-slate-200 text-center">
       <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
         <Building size={32} />
       </div>
       <h2 className="text-2xl font-bold mb-2">Inspector Portal</h2>
-      <p className="text-slate-500 mb-8">Sign in to manage your property inspections and save checklists securely.</p>
-      <button onClick={handleLogin} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors">
-        {loading ? <Loader2 className="animate-spin" size={20} /> : "Sign in with Google"}
-      </button>
+      <p className="text-slate-500 mb-6">Sign in to manage your property inspections and save checklists securely.</p>
+      
+      {errorMessage && (
+        <div className="mb-5 p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs text-left leading-relaxed">
+          <strong className="block mb-1 font-semibold text-amber-800 flex items-center gap-1.5">
+            <ShieldAlert size={15} className="shrink-0 text-amber-600" /> Sign-In Notice
+          </strong>
+          {errorMessage}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <button 
+          onClick={handleLogin} 
+          disabled={loading} 
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
+        >
+          {loading ? <Loader2 className="animate-spin" size={20} /> : "Sign in with Google"}
+        </button>
+
+        <div className="relative flex py-2 items-center">
+          <div className="flex-grow border-t border-slate-200"></div>
+          <span className="flex-shrink mx-3 text-xs text-slate-400 font-medium uppercase">Or</span>
+          <div className="flex-grow border-t border-slate-200"></div>
+        </div>
+
+        <button 
+          onClick={onGuestLogin} 
+          type="button"
+          className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm"
+        >
+          Continue as Guest Inspector (Offline / Demo)
+        </button>
+      </div>
     </main>
   );
 }
 
-function DashboardView({ user, onOpenChecklist }: { user: User, onOpenChecklist: (id: string | null) => void }) {
+function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenChecklist: (id: string | null) => void }) {
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -139,8 +221,21 @@ function DashboardView({ user, onOpenChecklist }: { user: User, onOpenChecklist:
         const snapshot = await getDocs(q);
         const list: Inspection[] = [];
         snapshot.forEach(docSnap => list.push({ id: docSnap.id, ...docSnap.data() } as Inspection));
-        list.sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
-        setInspections(list);
+        
+        // Merge with local storage
+        const local: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
+        const merged = [...list];
+        for (const loc of local) {
+          if (!merged.some(m => m.id === loc.id)) {
+            merged.push(loc);
+          }
+        }
+        merged.sort((a, b) => (b.updatedAt?.seconds || b.updatedAt || 0) - (a.updatedAt?.seconds || a.updatedAt || 0));
+        setInspections(merged);
+      } catch (err) {
+        console.warn("Firestore unavailable, loading local inspections:", err);
+        const local: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
+        setInspections(local);
       } finally { setLoading(false); }
     }
     load();
@@ -150,7 +245,7 @@ function DashboardView({ user, onOpenChecklist }: { user: User, onOpenChecklist:
     <main className="max-w-3xl mx-auto p-4 mt-4">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-slate-800">Your Inspections</h2>
-        <button onClick={() => onOpenChecklist(null)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2">
+        <button onClick={() => onOpenChecklist(null)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm">
           <Plus size={16} /> New
         </button>
       </div>
@@ -164,7 +259,7 @@ function DashboardView({ user, onOpenChecklist }: { user: User, onOpenChecklist:
       ) : (
         <div className="grid gap-3">
           {inspections.map(insp => (
-            <div key={insp.id} onClick={() => onOpenChecklist(insp.id)} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-blue-400 cursor-pointer flex justify-between items-center group">
+            <div key={insp.id} onClick={() => onOpenChecklist(insp.id)} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-blue-400 cursor-pointer flex justify-between items-center group shadow-sm transition-all">
               <div>
                 <h3 className="font-semibold text-slate-900 text-lg leading-tight">{insp.propertyName || 'Unnamed Property'}</h3>
                 <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
@@ -173,7 +268,7 @@ function DashboardView({ user, onOpenChecklist }: { user: User, onOpenChecklist:
                   <span className="flex items-center gap-1.5"><Handshake size={14} className="text-slate-400" /> {insp.landlordName || 'No landlord'}</span>
                 </div>
               </div>
-              <ChevronLeft size={20} className="text-slate-300 rotate-180 group-hover:text-blue-500" />
+              <ChevronLeft size={20} className="text-slate-300 rotate-180 group-hover:text-blue-500 transition-transform" />
             </div>
           ))}
         </div>
@@ -182,7 +277,7 @@ function DashboardView({ user, onOpenChecklist }: { user: User, onOpenChecklist:
   );
 }
 
-function ChecklistView({ user, inspectionId, onBack }: { user: User, inspectionId: string | null, onBack: () => void }) {
+function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspectionId: string | null, onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -209,33 +304,50 @@ function ChecklistView({ user, inspectionId, onBack }: { user: User, inspectionI
   useEffect(() => {
     async function loadData() {
       try {
-        const pSnap = await getDocs(collection(db, 'properties'));
-        const props: Property[] = [];
-        pSnap.forEach(d => props.push({ id: d.id, ...d.data() } as Property));
-        setProperties(props);
+        try {
+          const pSnap = await getDocs(collection(db, 'properties'));
+          const props: Property[] = [];
+          pSnap.forEach(d => props.push({ id: d.id, ...d.data() } as Property));
+          setProperties(props);
+        } catch (e) {
+          console.warn("Could not fetch remote properties:", e);
+        }
 
         if (inspectionId) {
-          const docRef = doc(db, 'inspections', inspectionId);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data() as Inspection;
-            setSelectedPropertyId(data.propertyId || '');
-            setLandlordName(data.landlordName || '');
-            setLandlordPhone(data.landlordPhone || '');
-            setPropertyName(data.propertyName || '');
-            setPropertyAddress(data.propertyAddress || '');
-            setState(data.checklistData || {});
-            setNotes(data.notes || {});
-            setImages(data.images || []);
-            setHiddenFields(data.hiddenFields || []);
-            setLabelOverrides(data.labelOverrides || {});
-            setCustomFields(data.customFields || []);
+          let loadedData: Inspection | null = null;
+          try {
+            const docRef = doc(db, 'inspections', inspectionId);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+              loadedData = { id: docSnap.id, ...docSnap.data() } as Inspection;
+            }
+          } catch (e) {
+            console.warn("Firestore inspection load failed, falling back to local:", e);
+          }
+
+          if (!loadedData) {
+            const localList: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
+            loadedData = localList.find(x => x.id === inspectionId) || null;
+          }
+
+          if (loadedData) {
+            setSelectedPropertyId(loadedData.propertyId || '');
+            setLandlordName(loadedData.landlordName || '');
+            setLandlordPhone(loadedData.landlordPhone || '');
+            setPropertyName(loadedData.propertyName || '');
+            setPropertyAddress(loadedData.propertyAddress || '');
+            setState(loadedData.checklistData || {});
+            setNotes(loadedData.notes || {});
+            setImages(loadedData.images || []);
+            setHiddenFields(loadedData.hiddenFields || []);
+            setLabelOverrides(loadedData.labelOverrides || {});
+            setCustomFields(loadedData.customFields || []);
           }
         }
       } finally { setLoading(false); }
     }
     loadData();
-  }, [inspectionId]);
+  }, [inspectionId, user.uid]);
 
   const handlePropertySelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const pId = e.target.value;
@@ -257,13 +369,32 @@ function ChecklistView({ user, inspectionId, onBack }: { user: User, inspectionI
     setSaving(true);
     try {
       const id = inspectionId || crypto.randomUUID();
-      const docRef = doc(db, 'inspections', id);
       const payload: Partial<Inspection> = {
         userId: user.uid, propertyId: selectedPropertyId, landlordName, landlordPhone, propertyName, propertyAddress,
         checklistData: state, notes, images, hiddenFields, labelOverrides, customFields,
         updatedAt: Timestamp.now(), ...(inspectionId ? {} : { createdAt: Timestamp.now() })
       };
-      await setDoc(docRef, payload, { merge: true });
+
+      // Always save to localStorage backup
+      try {
+        const localList: any[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
+        const idx = localList.findIndex(x => x.id === id);
+        const localItem = { id, ...payload, updatedAt: Date.now() };
+        if (idx >= 0) localList[idx] = localItem;
+        else localList.push(localItem);
+        localStorage.setItem(`inspections_${user.uid}`, JSON.stringify(localList));
+      } catch (localErr) {
+        console.warn("Local storage save error:", localErr);
+      }
+
+      // Try saving to Firestore
+      try {
+        const docRef = doc(db, 'inspections', id);
+        await setDoc(docRef, payload, { merge: true });
+      } catch (firestoreErr) {
+        console.warn("Firestore write failed, saved locally:", firestoreErr);
+      }
+
       onBack();
     } finally { setSaving(false); }
   };
