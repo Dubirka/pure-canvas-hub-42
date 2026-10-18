@@ -1,3 +1,3 @@
 # Tasks
 
-- [ ] Fix unresponsive top-section controls: Back, Logout, and Add to Home Screen instructions.
+- [x] Fix unresponsive top-section controls: Back, Logout, and Add to Home Screen instructions.
