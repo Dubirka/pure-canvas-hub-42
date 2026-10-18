@@ -14,6 +14,7 @@ import {
   savePropertyToSupabase 
 } from '../services/supabaseStorage';
 import ClientShareReportModal from '../components/ClientShareReportModal';
+import { Button } from '@/components/ui/button';
 
 type StateValue = boolean | string;
 
@@ -70,6 +71,12 @@ export default function Index() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'checklist'>('login');
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null);
+  const [showHomeScreenHelp, setShowHomeScreenHelp] = useState(false);
+  const homeScreenDialog = React.useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (showHomeScreenHelp) homeScreenDialog.current?.showModal();
+  }, [showHomeScreenHelp]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -126,7 +133,7 @@ export default function Index() {
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             {currentView === 'checklist' && (
-              <button onClick={() => setCurrentView('dashboard')} className="p-2 -ml-2 rounded-full hover:bg-slate-100 text-slate-600">
+              <button type="button" aria-label="Back to inspections" onClick={() => setCurrentView('dashboard')} className="p-2 -ml-2 rounded-full hover:bg-slate-100 text-slate-600">
                 <ChevronLeft size={24} />
               </button>
             )}
@@ -138,14 +145,29 @@ export default function Index() {
               <p className="text-xs text-slate-500 font-medium">Apartment Inspection</p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowHomeScreenHelp(true)} aria-label="How to add to home screen">
+              Home screen
+            </Button>
           {user && (
-            <button onClick={handleLogout} className="text-slate-400 hover:text-slate-600 transition-colors p-2 flex items-center gap-2 text-sm font-medium">
+            <button type="button" aria-label="Logout" onClick={handleLogout} className="text-slate-400 hover:text-slate-600 transition-colors p-2 flex items-center gap-2 text-sm font-medium">
               <LogOut size={18} />
               <span className="hidden sm:inline">Logout</span>
             </button>
           )}
+          </div>
         </div>
       </header>
+
+      {showHomeScreenHelp && (
+        <dialog ref={homeScreenDialog} aria-labelledby="home-screen-title" onClose={() => setShowHomeScreenHelp(false)} className="max-w-md rounded-xl border border-border bg-background p-6 text-foreground backdrop:bg-background/80">
+          <h2 id="home-screen-title" className="text-lg font-semibold">Add to your home screen</h2>
+          <p className="mt-3 text-sm text-muted-foreground">Open this app’s published link in your browser, outside the Lovable preview.</p>
+          <p className="mt-3 text-sm"><strong>iPhone or iPad:</strong> In Safari, open Share, choose Add to Home Screen, then tap Add.</p>
+          <p className="mt-3 text-sm"><strong>Android:</strong> In Chrome, open the three-dot menu, choose Add to home screen, then confirm. The wording may vary by browser.</p>
+          <Button className="mt-5" onClick={() => homeScreenDialog.current?.close()}>Close</Button>
+        </dialog>
+      )}
 
       {currentView === 'login' && <LoginView onGuestLogin={handleGuestLogin} />}
       {currentView === 'dashboard' && user && <DashboardView user={user} onOpenChecklist={(id) => {
