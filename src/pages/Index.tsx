@@ -14,7 +14,6 @@ import {
   savePropertyToSupabase 
 } from '../services/supabaseStorage';
 import ClientShareReportModal from '../components/ClientShareReportModal';
-import { Button } from '@/components/ui/button';
 
 type StateValue = boolean | string;
 
@@ -146,9 +145,9 @@ export default function Index() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowHomeScreenHelp(true)} aria-label="How to add to home screen">
+            <button type="button" className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted focus-visible:outline focus-visible:outline-ring" onClick={() => setShowHomeScreenHelp(true)} aria-label="How to add to home screen">
               Home screen
-            </Button>
+            </button>
           {user && (
             <button type="button" aria-label="Logout" onClick={handleLogout} className="text-slate-400 hover:text-slate-600 transition-colors p-2 flex items-center gap-2 text-sm font-medium">
               <LogOut size={18} />
@@ -165,7 +164,7 @@ export default function Index() {
           <p className="mt-3 text-sm text-muted-foreground">Open this app’s published link in your browser, outside the Lovable preview.</p>
           <p className="mt-3 text-sm"><strong>iPhone or iPad:</strong> In Safari, open Share, choose Add to Home Screen, then tap Add.</p>
           <p className="mt-3 text-sm"><strong>Android:</strong> In Chrome, open the three-dot menu, choose Add to home screen, then confirm. The wording may vary by browser.</p>
-          <Button className="mt-5" onClick={() => homeScreenDialog.current?.close()}>Close</Button>
+          <button type="button" className="mt-5 rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => homeScreenDialog.current?.close()}>Close</button>
         </dialog>
       )}
 
