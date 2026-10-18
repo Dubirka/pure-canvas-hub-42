@@ -1,6 +1,6 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
 import { 
-  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle, Smartphone
+  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle
 } from 'lucide-react';
 import { auth, db, signInWithGoogle, logout } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -71,7 +71,6 @@ export default function Index() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'checklist'>('login');
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null);
-  const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -120,10 +119,7 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-28 font-sans">
-      <PWAInstallBanner 
-        forceOpenModal={showInstallGuide} 
-        onCloseModal={() => setShowInstallGuide(false)} 
-      />
+      <PWAInstallBanner />
 
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-3 sm:px-4 py-2.5 sm:py-3.5 shadow-sm safe-header">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
@@ -148,16 +144,6 @@ export default function Index() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowInstallGuide(true)}
-              className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer touch-manipulation shrink-0"
-              aria-label="How to add to home screen"
-            >
-              <Smartphone size={14} className="shrink-0" />
-              <span>How to Add to Home Screen</span>
-            </button>
-
             {user && (
               <button 
                 type="button"

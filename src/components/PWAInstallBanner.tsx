@@ -110,7 +110,7 @@ export default function PWAInstallBanner({ forceOpenModal, onCloseModal }: PWAIn
                 className="bg-white hover:bg-blue-50 active:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer touch-manipulation"
               >
                 <Download size={14} className="shrink-0" />
-                <span>{deferredPrompt ? 'Install App' : (isIOS ? 'Add to Home' : 'How to Install')}</span>
+                <span>{deferredPrompt ? 'Install App' : 'How to Install'}</span>
               </button>
               <button
                 type="button"
