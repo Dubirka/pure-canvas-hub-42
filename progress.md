@@ -119,7 +119,7 @@ The **TryViet Apartment Inspection Checklist** serves as:
 * **The Invisible Overlay Bug Fix:** Resolved an issue where Radix `<ToastViewport />` was rendering an invisible full-screen overlay without `pointer-events-none`, intercepting mobile taps on top buttons. Configured `<ToastViewport className="pointer-events-none [&>*]:pointer-events-auto" />`.
 * **Instant 0ms Logout:** Removed network-blocking `await logout()`, making the UI switch instantly to the Login view while signing out Firebase in the background.
 * **Large Touch Targets:** Back button and Logout button updated to 40px+ touch targets (`h-10`) with `touch-manipulation` and tactile active states (`active:scale-95`).
-* **"Add to Home Screen" Dialog:** Header button opens a clear, visual modal with step-by-step instructions for Safari iOS (`Share` → `Add to Home Screen`) and Android Chrome (`⋮` → `Install app`).
+* **Consolidated "How to Install" Banner:** Kept the clean top banner with the high-contrast white button (`How to Install`) opening the visual step-by-step install guide for iOS Safari (`Share` → `Add to Home Screen`) and Android Chrome (`⋮` → `Install app`), eliminating clutter from the main sticky header.
 
 ---
 
