@@ -4,18 +4,28 @@ export interface Property {
   id: string;
   name: string;
   address: string;
+  neighborhood?: string;
   landlordName: string;
   landlordPhone: string;
+  landlordZalo?: string;
 }
 
 export interface Inspection {
   id: string;
   userId: string;
   propertyId?: string;
-  landlordName: string;
-  landlordPhone: string;
   propertyName: string;
   propertyAddress: string;
+  neighborhood?: string;
+  unitFloor?: string;
+  mapsUrl?: string;
+  landlordName: string;
+  landlordPhone: string;
+  landlordZalo?: string;
+  videoUrl?: string;
+  verdictScore?: string;
+  verdictBestFor?: string[];
+  verdictCatch?: string;
   checklistData: Record<string, any>;
   notes: Record<string, string>;
   images: { sectionId: string; url: string }[];
@@ -31,10 +41,18 @@ function mapRowToInspection(row: any): Inspection {
     id: row.id,
     userId: row.user_id,
     propertyId: row.property_id || '',
-    landlordName: row.landlord_name || '',
-    landlordPhone: row.landlord_phone || '',
     propertyName: row.property_name || '',
     propertyAddress: row.property_address || '',
+    neighborhood: row.neighborhood || '',
+    unitFloor: row.unit_floor || '',
+    mapsUrl: row.maps_url || '',
+    landlordName: row.landlord_name || '',
+    landlordPhone: row.landlord_phone || '',
+    landlordZalo: row.landlord_zalo || '',
+    videoUrl: row.video_url || '',
+    verdictScore: row.verdict_score || '',
+    verdictBestFor: Array.isArray(row.verdict_best_for) ? row.verdict_best_for : [],
+    verdictCatch: row.verdict_catch || '',
     checklistData: (row.checklist_data as Record<string, any>) || {},
     notes: (row.notes as Record<string, string>) || {},
     images: Array.isArray(row.images) ? (row.images as { sectionId: string; url: string }[]) : [],
@@ -51,10 +69,18 @@ function mapInspectionToRow(insp: Partial<Inspection>): any {
     id: insp.id,
     user_id: insp.userId,
     property_id: insp.propertyId || null,
-    landlord_name: insp.landlordName || '',
-    landlord_phone: insp.landlordPhone || '',
     property_name: insp.propertyName || '',
     property_address: insp.propertyAddress || '',
+    neighborhood: insp.neighborhood || '',
+    unit_floor: insp.unitFloor || '',
+    maps_url: insp.mapsUrl || '',
+    landlord_name: insp.landlordName || '',
+    landlord_phone: insp.landlordPhone || '',
+    landlord_zalo: insp.landlordZalo || '',
+    video_url: insp.videoUrl || '',
+    verdict_score: insp.verdictScore || '',
+    verdict_best_for: insp.verdictBestFor || [],
+    verdict_catch: insp.verdictCatch || '',
     checklist_data: insp.checklistData || {},
     notes: insp.notes || {},
     images: insp.images || [],
@@ -140,8 +166,10 @@ export async function fetchPropertiesFromSupabase(): Promise<Property[]> {
       id: p.id,
       name: p.name,
       address: p.address || '',
+      neighborhood: p.neighborhood || '',
       landlordName: p.landlord_name || '',
       landlordPhone: p.landlord_phone || '',
+      landlordZalo: p.landlord_zalo || '',
     }));
   } catch (err) {
     console.warn('Supabase fetch properties exception:', err);
@@ -157,8 +185,10 @@ export async function savePropertyToSupabase(property: Property): Promise<boolea
         id: property.id,
         name: property.name,
         address: property.address,
+        neighborhood: property.neighborhood || null,
         landlord_name: property.landlordName,
         landlord_phone: property.landlordPhone,
+        landlord_zalo: property.landlordZalo || null,
       }, { onConflict: 'id' });
 
     if (error) {

@@ -21,8 +21,16 @@ export type Database = {
           property_id: string | null
           landlord_name: string | null
           landlord_phone: string | null
+          landlord_zalo: string | null
           property_name: string | null
           property_address: string | null
+          neighborhood: string | null
+          unit_floor: string | null
+          maps_url: string | null
+          video_url: string | null
+          verdict_score: string | null
+          verdict_best_for: Json | null
+          verdict_catch: string | null
           checklist_data: Json | null
           notes: Json | null
           images: Json | null
@@ -38,8 +46,16 @@ export type Database = {
           property_id?: string | null
           landlord_name?: string | null
           landlord_phone?: string | null
+          landlord_zalo?: string | null
           property_name?: string | null
           property_address?: string | null
+          neighborhood?: string | null
+          unit_floor?: string | null
+          maps_url?: string | null
+          video_url?: string | null
+          verdict_score?: string | null
+          verdict_best_for?: Json | null
+          verdict_catch?: string | null
           checklist_data?: Json | null
           notes?: Json | null
           images?: Json | null
@@ -55,8 +71,16 @@ export type Database = {
           property_id?: string | null
           landlord_name?: string | null
           landlord_phone?: string | null
+          landlord_zalo?: string | null
           property_name?: string | null
           property_address?: string | null
+          neighborhood?: string | null
+          unit_floor?: string | null
+          maps_url?: string | null
+          video_url?: string | null
+          verdict_score?: string | null
+          verdict_best_for?: Json | null
+          verdict_catch?: string | null
           checklist_data?: Json | null
           notes?: Json | null
           images?: Json | null
@@ -73,24 +97,30 @@ export type Database = {
           id: string
           name: string
           address: string | null
+          neighborhood: string | null
           landlord_name: string | null
           landlord_phone: string | null
+          landlord_zalo: string | null
           created_at: string | null
         }
         Insert: {
           id: string
           name: string
           address?: string | null
+          neighborhood?: string | null
           landlord_name?: string | null
           landlord_phone?: string | null
+          landlord_zalo?: string | null
           created_at?: string | null
         }
         Update: {
           id?: string
           name?: string
           address?: string | null
+          neighborhood?: string | null
           landlord_name?: string | null
           landlord_phone?: string | null
+          landlord_zalo?: string | null
           created_at?: string | null
         }
         Relationships: []

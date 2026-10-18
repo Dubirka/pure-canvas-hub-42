@@ -1,6 +1,6 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
 import { 
-  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare
+  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle
 } from 'lucide-react';
 import { auth, db, signInWithGoogle, logout } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -13,6 +13,7 @@ import {
   fetchPropertiesFromSupabase, 
   savePropertyToSupabase 
 } from '../services/supabaseStorage';
+import ClientShareReportModal from '../components/ClientShareReportModal';
 
 type StateValue = boolean | string;
 
@@ -20,8 +21,10 @@ interface Property {
   id: string;
   name: string;
   address: string;
+  neighborhood?: string;
   landlordName: string;
   landlordPhone: string;
+  landlordZalo?: string;
 }
 
 interface CustomField {
@@ -35,10 +38,18 @@ interface Inspection {
   id: string;
   userId: string;
   propertyId?: string;
-  landlordName: string;
-  landlordPhone: string;
   propertyName: string;
   propertyAddress: string;
+  neighborhood?: string;
+  unitFloor?: string;
+  mapsUrl?: string;
+  videoUrl?: string;
+  landlordName: string;
+  landlordPhone: string;
+  landlordZalo?: string;
+  verdictScore?: string;
+  verdictBestFor?: string[];
+  verdictCatch?: string;
   checklistData: Record<string, StateValue>;
   notes: Record<string, string>;
   images: { sectionId: string, url: string }[];
@@ -314,10 +325,23 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
   
   // Property Metadata
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
-  const [landlordName, setLandlordName] = useState('');
-  const [landlordPhone, setLandlordPhone] = useState('');
   const [propertyName, setPropertyName] = useState('');
   const [propertyAddress, setPropertyAddress] = useState('');
+  const [neighborhood, setNeighborhood] = useState('An Thuong / My Khe');
+  const [unitFloor, setUnitFloor] = useState('');
+  const [mapsUrl, setMapsUrl] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [landlordName, setLandlordName] = useState('');
+  const [landlordPhone, setLandlordPhone] = useState('');
+  const [landlordZalo, setLandlordZalo] = useState('');
+
+  // TryViet Verdict & Client Trust Data
+  const [verdictScore, setVerdictScore] = useState('Approved - Soft Landing Only');
+  const [verdictBestFor, setVerdictBestFor] = useState<string[]>(['Solo Nomad', 'Light Sleeper']);
+  const [verdictCatch, setVerdictCatch] = useState('');
+
+  // Client Share Report Modal State
+  const [showShareModal, setShowShareModal] = useState(false);
   
   // Inspection Data
   const [state, setState] = useState<Record<string, StateValue>>({});
@@ -383,10 +407,18 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
 
           if (loadedData) {
             setSelectedPropertyId(loadedData.propertyId || '');
-            setLandlordName(loadedData.landlordName || '');
-            setLandlordPhone(loadedData.landlordPhone || '');
             setPropertyName(loadedData.propertyName || '');
             setPropertyAddress(loadedData.propertyAddress || '');
+            setNeighborhood(loadedData.neighborhood || 'An Thuong / My Khe');
+            setUnitFloor(loadedData.unitFloor || '');
+            setMapsUrl(loadedData.mapsUrl || '');
+            setVideoUrl(loadedData.videoUrl || '');
+            setLandlordName(loadedData.landlordName || '');
+            setLandlordPhone(loadedData.landlordPhone || '');
+            setLandlordZalo(loadedData.landlordZalo || '');
+            setVerdictScore(loadedData.verdictScore || 'Approved - Soft Landing Only');
+            setVerdictBestFor(loadedData.verdictBestFor || ['Solo Nomad']);
+            setVerdictCatch(loadedData.verdictCatch || '');
             setState(loadedData.checklistData || {});
             setNotes(loadedData.notes || {});
             setImages(loadedData.images || []);
@@ -410,9 +442,11 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         setPropertyAddress(p.address);
         setLandlordName(p.landlordName);
         setLandlordPhone(p.landlordPhone);
+        if (p.neighborhood) setNeighborhood(p.neighborhood);
+        if (p.landlordZalo) setLandlordZalo(p.landlordZalo);
       }
     } else {
-      setPropertyName(''); setPropertyAddress(''); setLandlordName(''); setLandlordPhone('');
+      setPropertyName(''); setPropertyAddress(''); setLandlordName(''); setLandlordPhone(''); setLandlordZalo('');
     }
   };
 
@@ -422,9 +456,28 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
       const id = inspectionId || crypto.randomUUID();
       const payload: Partial<Inspection> = {
         id,
-        userId: user.uid, propertyId: selectedPropertyId, landlordName, landlordPhone, propertyName, propertyAddress,
-        checklistData: state, notes, images, hiddenFields, labelOverrides, customFields,
-        updatedAt: Timestamp.now(), ...(inspectionId ? {} : { createdAt: Timestamp.now() })
+        userId: user.uid, 
+        propertyId: selectedPropertyId, 
+        propertyName, 
+        propertyAddress,
+        neighborhood,
+        unitFloor,
+        mapsUrl,
+        videoUrl,
+        landlordName, 
+        landlordPhone, 
+        landlordZalo,
+        verdictScore,
+        verdictBestFor,
+        verdictCatch,
+        checklistData: state, 
+        notes, 
+        images, 
+        hiddenFields, 
+        labelOverrides, 
+        customFields,
+        updatedAt: Timestamp.now(), 
+        ...(inspectionId ? {} : { createdAt: Timestamp.now() })
       };
 
       // 1. Always save to localStorage backup (offline-first)
@@ -445,10 +498,18 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
           id,
           userId: user.uid,
           propertyId: selectedPropertyId,
-          landlordName,
-          landlordPhone,
           propertyName,
           propertyAddress,
+          neighborhood,
+          unitFloor,
+          mapsUrl,
+          videoUrl,
+          landlordName,
+          landlordPhone,
+          landlordZalo,
+          verdictScore,
+          verdictBestFor,
+          verdictCatch,
           checklistData: state,
           notes,
           images,
@@ -486,13 +547,49 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={32} /></div>;
 
+  const currentInspectionForShare: Inspection = {
+    id: inspectionId || 'temp_preview',
+    userId: user.uid,
+    propertyId: selectedPropertyId,
+    propertyName: propertyName || 'TryViet Vetted Apartment',
+    propertyAddress,
+    neighborhood,
+    unitFloor,
+    mapsUrl,
+    videoUrl,
+    landlordName,
+    landlordPhone,
+    landlordZalo,
+    verdictScore,
+    verdictBestFor,
+    verdictCatch,
+    checklistData: state,
+    notes,
+    images,
+    hiddenFields,
+    labelOverrides,
+    customFields,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
   return (
     <>
       <main className="max-w-3xl mx-auto p-4 space-y-6 mt-2">
-        <div className="flex justify-between items-center mb-2">
-           <h2 className="text-2xl font-bold">Inspection Details</h2>
-           <div className="flex gap-2">
-             <button onClick={() => setEditMode(!editMode)} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${editMode ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-2">
+           <div>
+             <h2 className="text-2xl font-bold text-slate-900">Inspection Details</h2>
+             <p className="text-xs text-slate-500">Da Nang Vetted Apartment Checklist</p>
+           </div>
+           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+             <button 
+               onClick={() => setShowShareModal(true)} 
+               className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+               title="Create sanitized, branded report for Western clients without landlord contacts"
+             >
+               <Share2 size={16} /> Share Client Report
+             </button>
+             <button onClick={() => setEditMode(!editMode)} className={`px-3.5 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${editMode ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
                <Edit3 size={16} /> {editMode ? 'Done Editing' : 'Edit Checklist'}
              </button>
              <button onClick={handleSave} disabled={saving} className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
@@ -511,34 +608,63 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
           </div>
         )}
 
+        {/* --- HEADER: PROPERTY INFO --- */}
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-5 space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Select Property</label>
             <div className="flex gap-2">
               <select value={selectedPropertyId} onChange={handlePropertySelect} className="flex-1 bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500">
                 <option value="">-- Custom / Unlisted --</option>
-                {properties.map(p => <option key={p.id} value={p.id}>{p.name} - {p.landlordName}</option>)}
+                {properties.map(p => <option key={p.id} value={p.id}>{p.name} ({p.neighborhood || 'Da Nang'}) - {p.landlordName}</option>)}
               </select>
-              <button onClick={() => setShowPropertyModal(true)} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700"><Plus size={20} /></button>
+              <button onClick={() => setShowPropertyModal(true)} title="Add Property" className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 flex items-center gap-1 font-medium text-sm"><Plus size={18} /> New</button>
             </div>
           </div>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Property Name</label>
-              <input type="text" value={propertyName} onChange={e => setPropertyName(e.target.value)} disabled={!!selectedPropertyId} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:opacity-70" />
+              <input type="text" placeholder="e.g. My Khe Seaside Studio" value={propertyName} onChange={e => setPropertyName(e.target.value)} disabled={!!selectedPropertyId} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:opacity-70 outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Property Address</label>
-              <input type="text" value={propertyAddress} onChange={e => setPropertyAddress(e.target.value)} disabled={!!selectedPropertyId} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:opacity-70" />
+              <label className="block text-xs font-medium text-slate-500 mb-1">Neighborhood Area</label>
+              <select value={neighborhood} onChange={e => setNeighborhood(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium text-slate-800">
+                <option value="An Thuong / My Khe">An Thuong / My Khe</option>
+                <option value="Son Tra / My An">Son Tra / My An</option>
+                <option value="Hai Chau (City Center)">Hai Chau (City Center)</option>
+                <option value="Hoi An">Hoi An</option>
+                <option value="Other Da Nang District">Other Da Nang District</option>
+              </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Landlord Name</label>
-              <input type="text" value={landlordName} onChange={e => setLandlordName(e.target.value)} disabled={!!selectedPropertyId} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:opacity-70" />
+              <label className="block text-xs font-medium text-slate-500 mb-1">Unit Number & Floor Level</label>
+              <input type="text" placeholder="e.g. Unit 402, Floor 4 of 6 (Elevator)" value={unitFloor} onChange={e => setUnitFloor(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Landlord Phone</label>
-              <input type="text" value={landlordPhone} onChange={e => setLandlordPhone(e.target.value)} disabled={!!selectedPropertyId} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:opacity-70" />
+              <label className="block text-xs font-medium text-slate-500 mb-1">Property Address (Confidential / Internal)</label>
+              <input type="text" placeholder="e.g. 15 An Thuong 4, My An" value={propertyAddress} onChange={e => setPropertyAddress(e.target.value)} disabled={!!selectedPropertyId} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:opacity-70 outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Google Maps Pin URL</label>
+              <input type="url" placeholder="https://maps.app.goo.gl/..." value={mapsUrl} onChange={e => setMapsUrl(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Walkthrough Video Link (YouTube / Loom / Drive)</label>
+              <input type="url" placeholder="Crucial for $1,199 sight-unseen clients" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} className="w-full border border-indigo-200 bg-indigo-50/20 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Landlord Name (Internal Only)</label>
+              <input type="text" value={landlordName} onChange={e => setLandlordName(e.target.value)} disabled={!!selectedPropertyId} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:opacity-70 outline-none focus:border-blue-500" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Phone</label>
+                <input type="tel" value={landlordPhone} onChange={e => setLandlordPhone(e.target.value)} disabled={!!selectedPropertyId} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm disabled:opacity-70 outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Zalo Number</label>
+                <input type="tel" placeholder="Zalo contact" value={landlordZalo} onChange={e => setLandlordZalo(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+              </div>
             </div>
           </div>
         </section>
@@ -550,18 +676,36 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
           <EditableCheckItem id="c1_3" label="Bathroom ceiling and corners" ctx={ctx} />
           <EditableCheckItem id="c1_4" label="Inside wooden wardrobes and behind bed" ctx={ctx} />
           
+          <FieldWrapper id="c1_dehumidifier_box" ctx={ctx} label="Dehumidifier Availability">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-2 mb-4 border border-slate-200/60">
+              <BoxHeader id="c1_dehumidifier_lbl" label="Dehumidifier Provided? (Crucial for Oct-Dec Da Nang rainy season)" ctx={ctx} />
+              <RadioGroup id="c1_dehumidifier" options={['Yes', 'No', 'Needed in rainy season']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
           <FieldWrapper id="c1_5_box" ctx={ctx} label="Mattress & Noise Box">
-            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mt-4 border border-slate-200/60">
-              <BoxHeader id="c1_5_lbl" label="Mattress Test Result" ctx={ctx} />
-              <RadioGroup id="c1_5_mattress" options={['Rock hard', 'Medium', 'Soft']} ctx={ctx} />
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
+              <BoxHeader id="c1_5_lbl" label="Mattress Quality & Bed Dimensions" ctx={ctx} />
+              <div className="space-y-1">
+                <span className="text-xs text-slate-500 font-medium">Mattress Firmness</span>
+                <RadioGroup id="c1_5_mattress" options={['Rock hard', 'Medium', 'Soft']} ctx={ctx} />
+              </div>
+              <div className="pt-2 space-y-1">
+                <span className="text-xs text-slate-500 font-medium">Bed Dimensions</span>
+                <RadioGroup id="c1_bed_size" options={['Queen (1.6m)', 'King (1.8m)', 'Single (1.2m)', 'Twin']} ctx={ctx} />
+              </div>
+              <div className="pt-2 space-y-1">
+                <span className="text-xs text-slate-500 font-medium">Mattress Upgrade Option</span>
+                <RadioGroup id="c1_mattress_upgrade" options={['Landlord will add padded topper', 'Good as-is', 'Cannot change']} ctx={ctx} />
+              </div>
               {state['c1_5_mattress'] === 'Rock hard' && (
-                <div className="pt-2">
+                <div className="pt-1">
                   <EditableCheckItem id="c1_5_topper" label="Landlord will provide thick memory foam topper" ctx={ctx} hideBg />
                 </div>
               )}
             </div>
 
-            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mt-4 border border-slate-200/60">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
               <BoxHeader id="c1_6_lbl" label="Noise Level (Decibels)" ctx={ctx} />
               <EditableCheckItem id="c1_6_noise1" label="Open windows: Checked for construction, traffic, roosters" ctx={ctx} hideBg />
               <NumberInput id="c1_6_db_open" placeholder="Open window dB" suffix="dB" ctx={ctx} />
@@ -572,22 +716,54 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
               <EditableCheckItem id="c1_6_noise3" label="Internal noise: Walls are NOT paper-thin" ctx={ctx} hideBg />
             </div>
 
-            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mt-4 border border-slate-200/60">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
               <BoxHeader id="c1_7_lbl" label="Wi-Fi Speed & Setup" ctx={ctx} />
               <div className="grid grid-cols-2 gap-3 mb-2">
                 <NumberInput id="c1_7_dl" placeholder="Download" suffix="Mbps" ctx={ctx} />
                 <NumberInput id="c1_7_ul" placeholder="Upload" suffix="Mbps" ctx={ctx} />
               </div>
+              <div className="grid grid-cols-2 gap-3 mb-2">
+                <NumberInput id="c1_wifi_ping" placeholder="Latency / Ping" suffix="ms" ctx={ctx} />
+                <div>
+                  <span className="text-xs text-slate-500 font-medium mb-1 block">Internet Provider (ISP)</span>
+                  <RadioGroup id="c1_wifi_isp" options={['Viettel', 'FPT', 'VNPT', 'Other']} ctx={ctx} />
+                </div>
+              </div>
               <EditableCheckItem id="c1_7_router" label="Room has a dedicated router (not shared on floor)" ctx={ctx} hideBg />
               <EditableCheckItem id="c7_inc_wifi" label="Wi-Fi is included in rent (No extra fee)" ctx={ctx} hideBg />
             </div>
+
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-2 mb-2 border border-slate-200/60">
+              <BoxHeader id="c1_mobile_lbl" label="Mobile 4G/5G Indoor Signal (Viettel/Vinaphone eSIM)" ctx={ctx} />
+              <RadioGroup id="c1_mobile_signal" options={['Strong (4-5 bars)', 'Moderate (2-3 bars)', 'Weak / Deadzone (Call drops)']} ctx={ctx} />
+            </div>
           </FieldWrapper>
+
+          <EditableCheckItem id="c1_perimeter_construction" label="Perimeter check: NO adjacent empty sand lot or active pile-driving construction within 100m" ctx={ctx} />
+          <EditableCheckItem id="c1_perimeter_karaoke" label="Perimeter check: NO loud local karaoke / nhậu drinking spots on immediate block" ctx={ctx} />
+          <EditableCheckItem id="c1_window_seals" label="Typhoon seals: Checked window frames for paint bubbling, silicone peeling, or rain leaks" ctx={ctx} />
         </Section>
 
         {/* --- SECTION 2 --- */}
         <Section title="2. Workspace Setup" icon={<Laptop className="text-blue-500" size={20} />} sectionId="s2" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
           <EditableCheckItem id="c2_1" label="Dedicated desk with good height and stability" ctx={ctx} />
           <EditableCheckItem id="c2_2" label="Ergonomic / actual office chair (not hard wooden)" ctx={ctx} />
+          
+          <FieldWrapper id="c2_grounding_box" ctx={ctx} label="Electrical Grounding">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-2 my-3 border border-slate-200/60">
+              <BoxHeader id="c2_grounding_lbl" label="Outlet Grounding (MacBook Tingling Risk)" ctx={ctx} />
+              <RadioGroup id="c2_grounding" options={['3-prong grounded', '2-prong ungrounded (tingling MacBook risk)']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <FieldWrapper id="c2_ethernet_box" ctx={ctx} label="Router Proximity to Desk">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-2 my-3 border border-slate-200/60">
+              <BoxHeader id="c2_ethernet_lbl" label="Router Proximity to Desk" ctx={ctx} />
+              <RadioGroup id="c2_ethernet" options={['Can plug Ethernet cable directly', 'Wi-Fi only']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <EditableCheckItem id="c2_glare" label="Glare Check: Sun does NOT hit monitor screen directly without blinds" ctx={ctx} />
           <EditableCheckItem id="c2_3" label="Accessible power outlets directly next to desk" ctx={ctx} />
           <EditableCheckItem id="c2_4" label="Outlets take international/universal plugs" ctx={ctx} />
           <EditableCheckItem id="c2_5" label="Workspace is well-lit (natural light or good indoor)" ctx={ctx} />
@@ -601,30 +777,67 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
               <RadioGroup id="c3_water" options={['Landlord supplies 20L to door', 'Tenant must order/carry']} ctx={ctx} />
             </div>
           </FieldWrapper>
+
+          <FieldWrapper id="c3_stove_box" ctx={ctx} label="Cooking Stove Type">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
+              <BoxHeader id="c3_stove_lbl" label="Stove Type" ctx={ctx} />
+              <RadioGroup id="c3_stove" options={['2-Burner Induction', '1-Burner Induction', 'Gas Stove', 'None / Hotplate only']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <FieldWrapper id="c3_fridge_box" ctx={ctx} label="Refrigerator Size">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
+              <BoxHeader id="c3_fridge_lbl" label="Fridge Size (Capacity for Client Grocery Stocking)" ctx={ctx} />
+              <RadioGroup id="c3_fridge_size" options={['Full-size (separate freezer)', 'Mini-bar fridge (limited groceries)']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <FieldWrapper id="c3_appliance_box" ctx={ctx} label="Appliances Present">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-2 mb-4 border border-slate-200/60">
+              <BoxHeader id="c3_appliance_lbl" label="Appliances Present" ctx={ctx} />
+              <EditableCheckItem id="c3_appliance_kettle" label="Electric kettle provided" ctx={ctx} hideBg />
+              <EditableCheckItem id="c3_appliance_rice" label="Rice cooker provided" ctx={ctx} hideBg />
+              <EditableCheckItem id="c3_appliance_toaster" label="Toaster / Air Fryer provided" ctx={ctx} hideBg />
+              <EditableCheckItem id="c3_4" label="Microwave is provided" ctx={ctx} hideBg />
+            </div>
+          </FieldWrapper>
+
+          <EditableCheckItem id="c3_pests" label="Pest check: No ant trails near counters, unsealed AC holes, or door gaps (cockroach/gecko safe)" ctx={ctx} />
           <EditableCheckItem id="c3_1" label="Cooking utensils included (spatula, knives, chopping board)" ctx={ctx} />
           <EditableCheckItem id="c3_2" label="Eating wares included (plates, bowls, cutlery, glasses)" ctx={ctx} />
           <EditableCheckItem id="c3_3" label="Cooking vessels included (pots, frying pans)" ctx={ctx} />
-          <EditableCheckItem id="c3_4" label="Microwave is provided" ctx={ctx} />
           <EditableCheckItem id="c3_5" label="Exhaust fan/ventilation above stove" ctx={ctx} />
           <EditableCheckItem id="c3_6" label="Refrigerator is clean, no smells, freezer works" ctx={ctx} />
         </Section>
 
         {/* --- SECTION 4 --- */}
         <Section title="4. Bathroom & Laundry" icon={<ShowerHead className="text-teal-500" size={20} />} sectionId="s4" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
-          <FieldWrapper id="c4_heater_box" ctx={ctx} label="Water Heater Type">
+          <FieldWrapper id="c4_layout_box" ctx={ctx} label="Shower Separation & Layout">
             <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
-              <BoxHeader id="c4_heater_lbl" label="Water Heater Type" ctx={ctx} />
-              <RadioGroup id="c4_heater" options={['Electric Tank', 'Solar (Needs Backup)']} ctx={ctx} />
+              <BoxHeader id="c4_layout_lbl" label="Bathroom Layout & Shower Separation" ctx={ctx} />
+              <RadioGroup id="c4_shower_layout" options={['Glass Partition / Enclosed (Dry Toilet)', 'Curtain Only', 'Wet Room (Shower sprays over toilet)']} ctx={ctx} />
             </div>
           </FieldWrapper>
 
-          <EditableCheckItem id="c4_1" label="Water pressure is strong (sink + shower running)" ctx={ctx} />
+          <FieldWrapper id="c4_heater_box" ctx={ctx} label="Water Heater Type & Tank Size">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
+              <BoxHeader id="c4_heater_lbl" label="Hot Water System & Tank Size" ctx={ctx} />
+              <RadioGroup id="c4_tank_size" options={['20L-30L (10+ min shower)', '15L (5 min shower)', 'Instant (continuous electric)', 'Solar only (no backup)']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <EditableCheckItem id="c4_sewer_trap" label="P-Trap Check: Floor drain has anti-odor trap (No sewer gas smell rising in evening)" ctx={ctx} />
+          <EditableCheckItem id="c4_1" label="Water pressure is strong (sink + shower running simultaneously)" ctx={ctx} />
           <EditableCheckItem id="c4_2" label="Drainage works instantly (doesn't pool after 1 min)" ctx={ctx} />
           
-          <FieldWrapper id="c4_washer_box" ctx={ctx} label="Washing Machine Type">
+          <FieldWrapper id="c4_washer_box" ctx={ctx} label="Laundry & Dryer Options">
             <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 my-4 border border-slate-200/60">
-              <BoxHeader id="c4_washer_lbl" label="Washing Machine" ctx={ctx} />
+              <BoxHeader id="c4_washer_lbl" label="Washing Machine Setup" ctx={ctx} />
               <RadioGroup id="c4_washer" options={['Private in-unit', 'Shared in building']} ctx={ctx} />
+              <div className="pt-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Dryer Availability (Hang-drying takes 3 days in Nov humidity)</label>
+                <RadioGroup id="c4_dryer_type" options={['Washer + Dryer Combo', 'Separate Dryer Machine', 'Hang-dry only']} ctx={ctx} />
+              </div>
             </div>
           </FieldWrapper>
 
@@ -633,7 +846,29 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
 
         {/* --- SECTION 5 --- */}
         <Section title="5. General Comfort & Lighting" icon={<Sun className="text-orange-400" size={20} />} sectionId="s5" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+          <FieldWrapper id="c5_ac_box" ctx={ctx} label="AC Coverage">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
+              <BoxHeader id="c5_ac_lbl" label="Air Conditioning Coverage" ctx={ctx} />
+              <RadioGroup id="c5_ac_coverage" options={['Both Bedroom & Living Room have separate AC units', 'Bedroom Only (Living room gets hot)', 'Studio single unit']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <FieldWrapper id="c5_win_box" ctx={ctx} label="Window Orientation & Breezes">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
+              <BoxHeader id="c5_win_lbl" label="Window Sun Orientation" ctx={ctx} />
+              <RadioGroup id="c5_window_orientation" options={['East / Morning Sun', 'West / Hot Afternoon Sun', 'North / South (Gentle light)', 'Sea Breeze Orientation']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <FieldWrapper id="c5_screen_box" ctx={ctx} label="Window Bug Screens">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
+              <BoxHeader id="c5_screen_lbl" label="Window Bug Screens" ctx={ctx} />
+              <RadioGroup id="c5_bug_screens" options={['Bug screens installed on opening windows', 'None (Mosquito risk on lower floors)']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
           <EditableCheckItem id="c5_1" label="AC cools fast, filters clean, no musty smells" ctx={ctx} />
+          <EditableCheckItem id="c5_bedding" label="Bedding quality: 2 pillows per person + clean quality duvet & fresh protector included" ctx={ctx} />
           <EditableCheckItem id="c5_2" label="Windows face outside (not a brick wall or hallway)" ctx={ctx} />
           <EditableCheckItem id="c5_3" label="Blackout curtains in the bedroom area" ctx={ctx} />
           <EditableCheckItem id="c5_4" label="Bedside power outlets available" ctx={ctx} />
@@ -641,6 +876,21 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
 
         {/* --- SECTION 6 --- */}
         <Section title="6. Building Facilities & Security" icon={<Building2 className="text-purple-500" size={20} />} sectionId="s6" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+          <FieldWrapper id="c6_flood_box" ctx={ctx} label="Street Flooding Risk">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
+              <BoxHeader id="c6_flood_lbl" label="Street Flooding Risk (Heavy Rain & Typhoons)" ctx={ctx} />
+              <RadioGroup id="c6_flood_risk" options={['High ground / Dry street (No flood history)', 'Prone to ankle-deep water during heavy storms']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <FieldWrapper id="c6_gen_box" ctx={ctx} label="Backup Generator">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
+              <BoxHeader id="c6_gen_lbl" label="Backup Generator for Power Outages" ctx={ctx} />
+              <RadioGroup id="c6_generator" options={['Powers Elevator & Room Wi-Fi/Plugs', 'Powers Common Areas Only', 'None (Standard in VN)']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <EditableCheckItem id="c6_delivery" label="Dedicated lobby shelf or 24/7 guard for GrabFood / Shopee package drop-offs" ctx={ctx} />
           <EditableCheckItem id="c6_1" label="Elevator available (Crucial for 3rd floor+, luggage, water)" ctx={ctx} />
           <EditableCheckItem id="c6_2" label="24/7 free access (No curfew / locked gate at 11 PM)" ctx={ctx} />
           
@@ -656,6 +906,22 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
 
         {/* --- SECTION 7 --- */}
         <Section title="7. Landlord & Financial Terms" icon={<Handshake className="text-emerald-500" size={20} />} sectionId="s7" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+          <EditableCheckItem id="c7_police_reg" label="Foreigner Police Registration: Landlord confirms immediate online police registration (Khai báo tạm trú - mandatory for visa extensions)" ctx={ctx} />
+
+          <FieldWrapper id="c7_trust_box" ctx={ctx} label="Deposit Return Track Record">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 my-4 border border-slate-200/60">
+              <BoxHeader id="c7_trust_lbl" label="Deposit Return Track Record" ctx={ctx} />
+              <RadioGroup id="c7_deposit_trust" options={['Verified Trusted Landlord (TryViet vetted)', 'New / Unverified Landlord']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
+          <FieldWrapper id="c7_pay_box" ctx={ctx} label="Payment Methods Accepted">
+            <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 my-4 border border-slate-200/60">
+              <BoxHeader id="c7_pay_lbl" label="Payment Method Accepted" ctx={ctx} />
+              <RadioGroup id="c7_payment_method" options={['Local Bank / Wise Transfer', 'Cash VND', 'Credit/Debit Card']} ctx={ctx} />
+            </div>
+          </FieldWrapper>
+
           <FieldWrapper id="c7_eng_box" ctx={ctx} label="Landlord English Level">
             <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
               <BoxHeader id="c7_eng_lbl" label="Landlord English Level" ctx={ctx} />
@@ -690,9 +956,10 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
               <div className="pt-2">
                 <EditableCheckItem id="c7_inc_clean" label="Cleaning service" ctx={ctx} hideBg />
                 {state['c7_inc_clean'] && (
-                   <div className="mt-2 pl-8 pr-2">
-                     <SmartInput id="c7_clean_freq" placeholder="Frequency" options={['1x/week', '2x/week', '3x/week']} ctx={ctx} autoVnd={false} />
-                   </div>
+                  <div className="mt-2 pl-8 pr-2 space-y-2">
+                    <SmartInput id="c7_clean_freq" placeholder="Frequency" options={['1x/week', '2x/week', '3x/week']} ctx={ctx} autoVnd={false} />
+                    <EditableCheckItem id="c7_clean_bedsheet" label="Includes regular bedsheet & towel change" ctx={ctx} hideBg />
+                  </div>
                 )}
               </div>
             </div>
@@ -708,8 +975,105 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
           </FieldWrapper>
         </Section>
 
-        <div className="pt-4 pb-8 flex justify-end">
-           <button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-8 py-3 rounded-xl font-medium flex items-center gap-2 text-lg shadow-sm">
+        {/* --- SECTION 8: INSPECTOR SUMMARY & VERDICT --- */}
+        <section className="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-2xl p-6 shadow-md border border-slate-800 space-y-5">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30">
+              <ShieldCheck size={24} />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-white">8. Inspector Summary & TryViet Verdict</h3>
+              <p className="text-xs text-slate-300">Liability Shield & Client Trust Artifact</p>
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-1">
+            {/* Overall Verdict */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">Overall TryViet Score</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {[
+                  { id: 'Approved - Premium Tier ($1,199 Sight-Unseen Ready)', label: 'Approved: Premium Tier', desc: '$1,199 Sight-Unseen Ready', color: 'emerald' },
+                  { id: 'Approved - Soft Landing Only ($599 Blitz)', label: 'Approved: Soft Landing Only', desc: '$599 Pre-Vetted Blitz Only', color: 'blue' },
+                  { id: 'Rejected - Do Not Show (Has Dealbreakers)', label: 'Rejected: Do Not Show', desc: 'Has Fatal Dealbreaker', color: 'red' }
+                ].map(opt => {
+                  const selected = verdictScore === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setVerdictScore(opt.id)}
+                      className={`p-3 rounded-xl text-left border transition-all ${
+                        selected 
+                          ? (opt.color === 'emerald' ? 'bg-emerald-600/30 border-emerald-400 text-white shadow-sm ring-1 ring-emerald-400' : (opt.color === 'blue' ? 'bg-blue-600/30 border-blue-400 text-white shadow-sm ring-1 ring-blue-400' : 'bg-red-600/30 border-red-400 text-white shadow-sm ring-1 ring-red-400'))
+                          : 'bg-slate-800/60 border-slate-700/60 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="font-bold text-sm">{opt.label}</div>
+                      <div className="text-[11px] opacity-80 mt-0.5">{opt.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Best For Tags */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">Best For (Target Match)</label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  'Light Sleeper', 'Heavy Zoom Caller', 'Couple', 'Cook-at-Home', 
+                  'Solo Nomad', 'Rainy Season Stay', 'Beach Lover'
+                ].map(tag => {
+                  const active = verdictBestFor.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        if (active) setVerdictBestFor(verdictBestFor.filter(t => t !== tag));
+                        else setVerdictBestFor([...verdictBestFor, tag]);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        active 
+                          ? 'bg-blue-500 text-white border-blue-400' 
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      {active ? '✓ ' : '+ '}{tag}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* The Catch */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-amber-300 mb-1 flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-amber-400" />
+                The Catch (Honest #1 Flaw of this Apartment)
+              </label>
+              <p className="text-[11px] text-slate-400 mb-2">
+                Telling the client the single flaw upfront eliminates post-move-in liability and builds 100% trust.
+              </p>
+              <textarea
+                value={verdictCatch}
+                onChange={e => setVerdictCatch(e.target.value)}
+                placeholder="e.g. Great ocean breeze and 120Mbps Wi-Fi, but living room AC takes ~15 min to cool at 2 PM, and shower is wet-room style without glass partition."
+                className="w-full bg-slate-800/90 border border-slate-700 rounded-xl p-3 text-sm text-white placeholder:text-slate-500 outline-none focus:border-amber-400 min-h-[80px]"
+              />
+            </div>
+          </div>
+        </section>
+
+        <div className="pt-4 pb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+           <button 
+             onClick={() => setShowShareModal(true)} 
+             className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 text-base shadow-sm transition-colors"
+           >
+             <Share2 size={18} /> Preview Client Report
+           </button>
+           <button onClick={handleSave} disabled={saving} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-8 py-3 rounded-xl font-medium flex items-center justify-center gap-2 text-lg shadow-sm">
              {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />} Save Inspection
            </button>
         </div>
@@ -718,8 +1082,17 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
       {showPropertyModal && <NewPropertyModal onClose={() => setShowPropertyModal(false)} onAdded={(p) => {
         setProperties([...properties, p]); setSelectedPropertyId(p.id); setPropertyName(p.name);
         setPropertyAddress(p.address); setLandlordName(p.landlordName); setLandlordPhone(p.landlordPhone);
+        if (p.neighborhood) setNeighborhood(p.neighborhood);
+        if (p.landlordZalo) setLandlordZalo(p.landlordZalo);
         setShowPropertyModal(false);
       }} />}
+
+      {showShareModal && (
+        <ClientShareReportModal 
+          inspection={currentInspectionForShare} 
+          onClose={() => setShowShareModal(false)} 
+        />
+      )}
     </>
   );
 }
@@ -1062,15 +1435,25 @@ function NewPropertyModal({ onClose, onAdded }: { onClose: () => void, onAdded: 
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
+  const [neighborhood, setNeighborhood] = useState('An Thuong / My Khe');
   const [landlordName, setLandlordName] = useState('');
   const [landlordPhone, setLandlordPhone] = useState('');
+  const [landlordZalo, setLandlordZalo] = useState('');
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       const id = crypto.randomUUID();
-      const propertyItem: Property = { id, name, address, landlordName, landlordPhone };
+      const propertyItem: Property = { 
+        id, 
+        name, 
+        address, 
+        neighborhood, 
+        landlordName, 
+        landlordPhone, 
+        landlordZalo 
+      };
 
       // 1. Save to Supabase backend (Lovable Cloud)
       try {
@@ -1104,12 +1487,40 @@ function NewPropertyModal({ onClose, onAdded }: { onClose: () => void, onAdded: 
           <h3 className="font-bold text-lg text-slate-800">Add New Property</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
         </div>
-        <form onSubmit={submit} className="p-5 space-y-4">
-          <div><label className="block text-sm font-medium text-slate-700 mb-1">Property Name</label><input required type="text" value={name} onChange={e=>setName(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" /></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-1">Address</label><input required type="text" value={address} onChange={e=>setAddress(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" /></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-1">Landlord Name</label><input required type="text" value={landlordName} onChange={e=>setLandlordName(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" /></div>
-          <div><label className="block text-sm font-medium text-slate-700 mb-1">Landlord Phone</label><input required type="text" value={landlordPhone} onChange={e=>setLandlordPhone(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-500" /></div>
-          <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2.5 rounded-xl transition-colors">{loading ? 'Saving...' : 'Save Property'}</button>
+        <form onSubmit={submit} className="p-5 space-y-3.5">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Property Name</label>
+            <input required type="text" placeholder="e.g. My Khe Seaside Residence" value={name} onChange={e=>setName(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Neighborhood</label>
+            <select value={neighborhood} onChange={e=>setNeighborhood(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
+              <option value="An Thuong / My Khe">An Thuong / My Khe</option>
+              <option value="Son Tra / My An">Son Tra / My An</option>
+              <option value="Hai Chau (City Center)">Hai Chau (City Center)</option>
+              <option value="Hoi An">Hoi An</option>
+              <option value="Other Da Nang District">Other Da Nang District</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
+            <input required type="text" placeholder="e.g. 15 An Thuong 4" value={address} onChange={e=>setAddress(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Landlord Name</label>
+              <input required type="text" value={landlordName} onChange={e=>setLandlordName(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+              <input required type="tel" value={landlordPhone} onChange={e=>setLandlordPhone(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Zalo Number (Optional)</label>
+            <input type="tel" placeholder="Zalo contact" value={landlordZalo} onChange={e=>setLandlordZalo(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          </div>
+          <button type="submit" disabled={loading} className="w-full mt-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2.5 rounded-xl transition-colors shadow-sm">{loading ? 'Saving...' : 'Save Property'}</button>
         </form>
       </div>
     </div>

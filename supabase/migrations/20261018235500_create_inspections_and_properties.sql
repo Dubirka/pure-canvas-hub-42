@@ -1,13 +1,21 @@
--- Migration: Create inspections and properties tables with RLS policies for multi-device sync
+-- Migration: Create inspections and properties tables with complete TryViet audit schema and RLS policies
 
 CREATE TABLE IF NOT EXISTS public.inspections (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   property_id TEXT,
-  landlord_name TEXT,
-  landlord_phone TEXT,
   property_name TEXT,
   property_address TEXT,
+  neighborhood TEXT,
+  unit_floor TEXT,
+  maps_url TEXT,
+  landlord_name TEXT,
+  landlord_phone TEXT,
+  landlord_zalo TEXT,
+  video_url TEXT,
+  verdict_score TEXT,
+  verdict_best_for JSONB DEFAULT '[]'::jsonb,
+  verdict_catch TEXT,
   checklist_data JSONB DEFAULT '{}'::jsonb,
   notes JSONB DEFAULT '{}'::jsonb,
   images JSONB DEFAULT '[]'::jsonb,
@@ -18,14 +26,35 @@ CREATE TABLE IF NOT EXISTS public.inspections (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- In case table already existed without the new columns, add them safely
+DO $$
+BEGIN
+  ALTER TABLE public.inspections ADD COLUMN IF NOT EXISTS neighborhood TEXT;
+  ALTER TABLE public.inspections ADD COLUMN IF NOT EXISTS unit_floor TEXT;
+  ALTER TABLE public.inspections ADD COLUMN IF NOT EXISTS maps_url TEXT;
+  ALTER TABLE public.inspections ADD COLUMN IF NOT EXISTS landlord_zalo TEXT;
+  ALTER TABLE public.inspections ADD COLUMN IF NOT EXISTS video_url TEXT;
+  ALTER TABLE public.inspections ADD COLUMN IF NOT EXISTS verdict_score TEXT;
+  ALTER TABLE public.inspections ADD COLUMN IF NOT EXISTS verdict_best_for JSONB DEFAULT '[]'::jsonb;
+  ALTER TABLE public.inspections ADD COLUMN IF NOT EXISTS verdict_catch TEXT;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.properties (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   address TEXT,
+  neighborhood TEXT,
   landlord_name TEXT,
   landlord_phone TEXT,
+  landlord_zalo TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+DO $$
+BEGIN
+  ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS neighborhood TEXT;
+  ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS landlord_zalo TEXT;
+END $$;
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.inspections ENABLE ROW LEVEL SECURITY;
