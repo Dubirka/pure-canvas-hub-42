@@ -16,112 +16,112 @@ export type Database = {
     Tables: {
       inspections: {
         Row: {
+          checklist_data: Json | null
+          created_at: string | null
+          custom_fields: Json | null
+          hidden_fields: Json | null
           id: string
-          user_id: string
-          property_id: string | null
+          images: Json | null
+          label_overrides: Json | null
           landlord_name: string | null
           landlord_phone: string | null
           landlord_zalo: string | null
-          property_name: string | null
-          property_address: string | null
-          neighborhood: string | null
-          unit_floor: string | null
           maps_url: string | null
-          video_url: string | null
-          verdict_score: string | null
+          neighborhood: string | null
+          notes: Json | null
+          property_address: string | null
+          property_id: string | null
+          property_name: string | null
+          unit_floor: string | null
+          updated_at: string | null
+          user_id: string
           verdict_best_for: Json | null
           verdict_catch: string | null
-          checklist_data: Json | null
-          notes: Json | null
-          images: Json | null
-          hidden_fields: Json | null
-          label_overrides: Json | null
-          custom_fields: Json | null
-          created_at: string | null
-          updated_at: string | null
+          verdict_score: string | null
+          video_url: string | null
         }
         Insert: {
+          checklist_data?: Json | null
+          created_at?: string | null
+          custom_fields?: Json | null
+          hidden_fields?: Json | null
           id: string
-          user_id: string
-          property_id?: string | null
+          images?: Json | null
+          label_overrides?: Json | null
           landlord_name?: string | null
           landlord_phone?: string | null
           landlord_zalo?: string | null
-          property_name?: string | null
-          property_address?: string | null
-          neighborhood?: string | null
-          unit_floor?: string | null
           maps_url?: string | null
-          video_url?: string | null
-          verdict_score?: string | null
+          neighborhood?: string | null
+          notes?: Json | null
+          property_address?: string | null
+          property_id?: string | null
+          property_name?: string | null
+          unit_floor?: string | null
+          updated_at?: string | null
+          user_id: string
           verdict_best_for?: Json | null
           verdict_catch?: string | null
-          checklist_data?: Json | null
-          notes?: Json | null
-          images?: Json | null
-          hidden_fields?: Json | null
-          label_overrides?: Json | null
-          custom_fields?: Json | null
-          created_at?: string | null
-          updated_at?: string | null
+          verdict_score?: string | null
+          video_url?: string | null
         }
         Update: {
+          checklist_data?: Json | null
+          created_at?: string | null
+          custom_fields?: Json | null
+          hidden_fields?: Json | null
           id?: string
-          user_id?: string
-          property_id?: string | null
+          images?: Json | null
+          label_overrides?: Json | null
           landlord_name?: string | null
           landlord_phone?: string | null
           landlord_zalo?: string | null
-          property_name?: string | null
-          property_address?: string | null
-          neighborhood?: string | null
-          unit_floor?: string | null
           maps_url?: string | null
-          video_url?: string | null
-          verdict_score?: string | null
+          neighborhood?: string | null
+          notes?: Json | null
+          property_address?: string | null
+          property_id?: string | null
+          property_name?: string | null
+          unit_floor?: string | null
+          updated_at?: string | null
+          user_id?: string
           verdict_best_for?: Json | null
           verdict_catch?: string | null
-          checklist_data?: Json | null
-          notes?: Json | null
-          images?: Json | null
-          hidden_fields?: Json | null
-          label_overrides?: Json | null
-          custom_fields?: Json | null
-          created_at?: string | null
-          updated_at?: string | null
+          verdict_score?: string | null
+          video_url?: string | null
         }
         Relationships: []
       }
       properties: {
         Row: {
-          id: string
-          name: string
           address: string | null
-          neighborhood: string | null
+          created_at: string | null
+          id: string
           landlord_name: string | null
           landlord_phone: string | null
           landlord_zalo: string | null
-          created_at: string | null
+          name: string
+          neighborhood: string | null
         }
         Insert: {
-          id: string
-          name: string
           address?: string | null
-          neighborhood?: string | null
+          created_at?: string | null
+          id: string
           landlord_name?: string | null
           landlord_phone?: string | null
           landlord_zalo?: string | null
-          created_at?: string | null
+          name: string
+          neighborhood?: string | null
         }
         Update: {
-          id?: string
-          name?: string
           address?: string | null
-          neighborhood?: string | null
+          created_at?: string | null
+          id?: string
           landlord_name?: string | null
           landlord_phone?: string | null
           landlord_zalo?: string | null
-          created_at?: string | null
+          name?: string
+          neighborhood?: string | null
         }
         Relationships: []
       }
