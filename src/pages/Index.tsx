@@ -270,6 +270,15 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
           return timeB - timeA;
         });
         setInspections(merged);
+
+        // Auto-sync existing locally stored inspections to Supabase backend in the background
+        const supabaseIds = new Set(supabaseList.map(s => s.id));
+        const unsyncedLocals = local.filter(loc => loc.id && !supabaseIds.has(loc.id));
+        if (unsyncedLocals.length > 0) {
+          Promise.allSettled(unsyncedLocals.map(loc => saveInspectionToSupabase(loc))).catch(err => {
+            console.warn("Background auto-sync of local checklists to Supabase:", err);
+          });
+        }
       } catch (err) {
         console.warn("Error loading inspections, falling back to local:", err);
         const local: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
