@@ -93,11 +93,18 @@ function mapInspectionToRow(insp: Partial<Inspection>): any {
 
 export async function fetchInspectionsFromSupabase(userId: string): Promise<Inspection[]> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('inspections')
       .select('*')
-      .eq('user_id', userId)
       .order('updated_at', { ascending: false });
+
+    if (userId && userId !== 'guest_inspector') {
+      query = query.or(`user_id.eq.${userId},user_id.eq.guest_inspector`);
+    } else if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.warn('Supabase fetch inspections error:', error.message);

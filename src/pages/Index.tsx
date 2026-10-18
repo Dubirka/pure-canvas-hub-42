@@ -228,6 +228,39 @@ function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
   );
 }
 
+function getAllLocalInspections(userUid: string): Inspection[] {
+  const map = new Map<string, Inspection>();
+  try {
+    // 1. Direct user key
+    const direct: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${userUid}`) || '[]');
+    if (Array.isArray(direct)) {
+      direct.forEach(item => { if (item && item.id) map.set(item.id, item); });
+    }
+
+    // 2. Scan all localStorage keys starting with 'inspections' (e.g. inspections_guest_inspector)
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('inspections') || key === 'inspections')) {
+        try {
+          const list: Inspection[] = JSON.parse(localStorage.getItem(key) || '[]');
+          if (Array.isArray(list)) {
+            list.forEach(item => {
+              if (item && item.id && !map.has(item.id)) {
+                map.set(item.id, item);
+              }
+            });
+          }
+        } catch {
+          // ignore parsing error
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Could not read local inspections:", e);
+  }
+  return Array.from(map.values());
+}
+
 function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenChecklist: (id: string | null) => void }) {
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,8 +281,8 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
           console.warn("Firestore unavailable, checking local & Supabase:", e);
         }
         
-        // 3. Merge with local storage
-        const local: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
+        // 3. Merge with all local storage inspections (including guest or previous sessions)
+        const local: Inspection[] = getAllLocalInspections(user.uid);
         
         const mergedMap = new Map<string, Inspection>();
         [...local, ...firestoreList, ...supabaseList].forEach(item => {
@@ -410,7 +443,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
 
           // 3. Fallback to localStorage
           if (!loadedData) {
-            const localList: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
+            const localList: Inspection[] = getAllLocalInspections(user.uid);
             loadedData = localList.find(x => x.id === inspectionId) || null;
           }
 
