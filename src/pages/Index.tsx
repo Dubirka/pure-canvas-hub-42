@@ -70,12 +70,6 @@ export default function Index() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'checklist'>('login');
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null);
-  const [showHomeScreenHelp, setShowHomeScreenHelp] = useState(false);
-  const homeScreenDialog = React.useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    if (showHomeScreenHelp) homeScreenDialog.current?.showModal();
-  }, [showHomeScreenHelp]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -99,13 +93,15 @@ export default function Index() {
     return () => unsubscribe();
   }, []);
 
-  const handleLogout = () => {
-    // 1. Immediately switch to login view (instant 0ms response)
+  const handleLogout = async () => {
     localStorage.removeItem('tryviet_active_user');
     setUser(null);
     setCurrentView('login');
-    // 2. Perform Firebase signout in background
-    logout().catch(e => console.warn("Logout error:", e));
+    try {
+      await logout();
+    } catch (e) {
+      console.warn("Logout error:", e);
+    }
   };
 
   const handleGuestLogin = () => {
@@ -125,98 +121,31 @@ export default function Index() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 pb-28 font-sans">
-      <PWAInstallBanner />
-
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-3 sm:px-4 py-2.5 sm:py-3.5 shadow-sm safe-header">
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 sm:gap-3">
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-24 font-sans">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 py-4 shadow-sm">
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
             {currentView === 'checklist' && (
-              <button 
-                type="button"
-                onClick={() => setCurrentView('dashboard')} 
-                aria-label="Back to dashboard"
-                className="h-10 w-10 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 flex items-center justify-center shrink-0 transition-transform active:scale-95 cursor-pointer border border-slate-200"
-              >
+              <button onClick={() => setCurrentView('dashboard')} className="p-2 -ml-2 rounded-full hover:bg-slate-100 text-slate-600">
                 <ChevronLeft size={24} />
               </button>
             )}
-            <div className="bg-blue-600 p-2 rounded-xl text-white shadow-sm flex items-center justify-center shrink-0">
+            <div className="bg-blue-600 p-2 rounded-lg text-white">
               <Building size={20} />
             </div>
             <div>
-              <h1 className="font-extrabold text-base sm:text-lg leading-tight tracking-tight text-slate-900">TryViet</h1>
-              <p className="text-[11px] sm:text-xs text-slate-500 font-medium">Apartment Quality Inspector</p>
+              <h1 className="font-bold text-lg leading-tight">TryViet</h1>
+              <p className="text-xs text-slate-500 font-medium">Apartment Inspection</p>
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="h-10 px-3 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:bg-slate-200 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-slate-200"
-              onClick={() => setShowHomeScreenHelp(true)}
-              aria-label="How to add to home screen"
-            >
-              <Smartphone size={15} className="text-blue-600" />
-              <span className="hidden sm:inline">Add to</span> Home screen
+          {user && (
+            <button onClick={handleLogout} className="text-slate-400 hover:text-slate-600 transition-colors p-2 flex items-center gap-2 text-sm font-medium">
+              <LogOut size={18} />
+              <span className="hidden sm:inline">Logout</span>
             </button>
-
-            {user && (
-              <button 
-                type="button"
-                onClick={handleLogout} 
-                aria-label="Logout"
-                className="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 transition-all flex items-center gap-1.5 text-xs sm:text-sm font-semibold shrink-0 cursor-pointer active:scale-95 border border-slate-200 shadow-sm"
-              >
-                <LogOut size={16} className="text-slate-600 shrink-0" />
-                <span>Logout</span>
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </header>
-
-      {showHomeScreenHelp && (
-        <dialog 
-          ref={homeScreenDialog} 
-          aria-labelledby="home-screen-title" 
-          onClose={() => setShowHomeScreenHelp(false)} 
-          className="max-w-md w-full rounded-2xl border border-slate-200 bg-white p-6 text-slate-800 shadow-2xl backdrop:bg-slate-900/60 backdrop:backdrop-blur-sm z-50 fixed inset-0 m-auto"
-        >
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-            <h2 id="home-screen-title" className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <Smartphone size={18} className="text-blue-600" /> Add to Home Screen (PWA)
-            </h2>
-            <button 
-              type="button" 
-              onClick={() => { homeScreenDialog.current?.close(); setShowHomeScreenHelp(false); }}
-              className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-            >
-              <X size={18} />
-            </button>
-          </div>
-          <p className="text-xs text-slate-600 mb-3">
-            Installing removes the browser URL bar so TryViet runs full-screen like a mobile app with offline support:
-          </p>
-          <div className="space-y-2.5 text-xs">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <strong className="block text-slate-900 mb-0.5">🍎 iPhone or iPad (Safari):</strong>
-              Tap the <strong>Share</strong> button at the bottom of Safari, scroll down and tap <strong>"Add to Home Screen"</strong>, then tap <strong>Add</strong>.
-            </div>
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <strong className="block text-slate-900 mb-0.5">🤖 Android (Chrome):</strong>
-              Tap the <strong>three dots (⋮)</strong> menu in the top right, tap <strong>"Install app"</strong> or <strong>"Add to home screen"</strong>, then confirm.
-            </div>
-          </div>
-          <button 
-            type="button" 
-            className="mt-5 w-full rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 px-4 py-2.5 text-xs font-bold text-white transition-colors cursor-pointer"
-            onClick={() => { homeScreenDialog.current?.close(); setShowHomeScreenHelp(false); }}
-          >
-            Close
-          </button>
-        </dialog>
-      )}
 
       {currentView === 'login' && <LoginView onGuestLogin={handleGuestLogin} />}
       {currentView === 'dashboard' && user && <DashboardView user={user} onOpenChecklist={(id) => {

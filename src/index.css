@@ -74,30 +74,3 @@
     @apply bg-background text-foreground;
   }
 }
-/* Native Mobile App Touch & Feel (PWA) */
-html, body {
-  -webkit-tap-highlight-color: transparent;
-  -webkit-font-smoothing: antialiased;
-}
-
-button, [role="button"], a {
-  touch-action: manipulation;
-  cursor: pointer;
-}
-
-/* iOS Safe Area Inset Helpers */
-.safe-top {
-  padding-top: max(1rem, env(safe-area-inset-top));
-}
-
-.safe-bottom {
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
-}
-
-.safe-header {
-  padding-top: max(1rem, calc(0.75rem + env(safe-area-inset-top)));
-}
-
-.safe-bar {
-  padding-bottom: max(0.75rem, calc(0.5rem + env(safe-area-inset-bottom)));
-}
