@@ -77,22 +77,13 @@
 
 /* Native Mobile App Touch & Feel (PWA) */
 html, body {
-  overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
-  touch-action: manipulation;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Prevent accidental text selection on UI controls */
-button, nav, header, [role="button"], label, .badge {
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-input, textarea, [contenteditable="true"] {
-  -webkit-user-select: text;
-  user-select: text;
+button, [role="button"], a {
+  touch-action: manipulation;
+  cursor: pointer;
 }
 
 /* iOS Safe Area Inset Helpers */
