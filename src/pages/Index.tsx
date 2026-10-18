@@ -1,6 +1,6 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
 import { 
-  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle, WifiOff, Smartphone
+  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle
 } from 'lucide-react';
 import { auth, db, signInWithGoogle, logout } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -14,7 +14,6 @@ import {
   savePropertyToSupabase 
 } from '../services/supabaseStorage';
 import ClientShareReportModal from '../components/ClientShareReportModal';
-import PWAInstallBanner from '../components/PWAInstallBanner';
 
 type StateValue = boolean | string;
 
@@ -71,19 +70,12 @@ export default function Index() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'checklist'>('login');
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null);
-
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showHomeScreenHelp, setShowHomeScreenHelp] = useState(false);
+  const homeScreenDialog = React.useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
+    if (showHomeScreenHelp) homeScreenDialog.current?.showModal();
+  }, [showHomeScreenHelp]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -153,30 +145,78 @@ export default function Index() {
               <Building size={20} />
             </div>
             <div>
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <h1 className="font-extrabold text-base sm:text-lg leading-tight tracking-tight text-slate-900">TryViet</h1>
-                {!isOnline && (
-                  <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-amber-300">
-                    <WifiOff size={11} /> Offline
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] sm:text-xs text-slate-500 font-medium">Apartment Inspector</p>
+              <h1 className="font-extrabold text-base sm:text-lg leading-tight tracking-tight text-slate-900">TryViet</h1>
+              <p className="text-[11px] sm:text-xs text-slate-500 font-medium">Apartment Quality Inspector</p>
             </div>
           </div>
-          {user && (
-            <button 
+
+          <div className="flex items-center gap-2">
+            <button
               type="button"
-              onClick={handleLogout} 
-              aria-label="Logout"
-              className="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 transition-all flex items-center gap-1.5 text-xs sm:text-sm font-semibold shrink-0 cursor-pointer active:scale-95 border border-slate-200 shadow-sm"
+              className="h-10 px-3 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:bg-slate-200 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-slate-200"
+              onClick={() => setShowHomeScreenHelp(true)}
+              aria-label="How to add to home screen"
             >
-              <LogOut size={16} className="text-slate-600 shrink-0" />
-              <span>Logout</span>
+              <Smartphone size={15} className="text-blue-600" />
+              <span className="hidden sm:inline">Add to</span> Home screen
             </button>
-          )}
+
+            {user && (
+              <button 
+                type="button"
+                onClick={handleLogout} 
+                aria-label="Logout"
+                className="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 transition-all flex items-center gap-1.5 text-xs sm:text-sm font-semibold shrink-0 cursor-pointer active:scale-95 border border-slate-200 shadow-sm"
+              >
+                <LogOut size={16} className="text-slate-600 shrink-0" />
+                <span>Logout</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
+
+      {showHomeScreenHelp && (
+        <dialog 
+          ref={homeScreenDialog} 
+          aria-labelledby="home-screen-title" 
+          onClose={() => setShowHomeScreenHelp(false)} 
+          className="max-w-md w-full rounded-2xl border border-slate-200 bg-white p-6 text-slate-800 shadow-2xl backdrop:bg-slate-900/60 backdrop:backdrop-blur-sm z-50 fixed inset-0 m-auto"
+        >
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+            <h2 id="home-screen-title" className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Smartphone size={18} className="text-blue-600" /> Add to Home Screen (PWA)
+            </h2>
+            <button 
+              type="button" 
+              onClick={() => { homeScreenDialog.current?.close(); setShowHomeScreenHelp(false); }}
+              className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <p className="text-xs text-slate-600 mb-3">
+            Installing removes the browser URL bar so TryViet runs full-screen like a mobile app with offline support:
+          </p>
+          <div className="space-y-2.5 text-xs">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <strong className="block text-slate-900 mb-0.5">🍎 iPhone or iPad (Safari):</strong>
+              Tap the <strong>Share</strong> button at the bottom of Safari, scroll down and tap <strong>"Add to Home Screen"</strong>, then tap <strong>Add</strong>.
+            </div>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <strong className="block text-slate-900 mb-0.5">🤖 Android (Chrome):</strong>
+              Tap the <strong>three dots (⋮)</strong> menu in the top right, tap <strong>"Install app"</strong> or <strong>"Add to home screen"</strong>, then confirm.
+            </div>
+          </div>
+          <button 
+            type="button" 
+            className="mt-5 w-full rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 px-4 py-2.5 text-xs font-bold text-white transition-colors cursor-pointer"
+            onClick={() => { homeScreenDialog.current?.close(); setShowHomeScreenHelp(false); }}
+          >
+            Close
+          </button>
+        </dialog>
+      )}
 
       {currentView === 'login' && <LoginView onGuestLogin={handleGuestLogin} />}
       {currentView === 'dashboard' && user && <DashboardView user={user} onOpenChecklist={(id) => {
@@ -1151,23 +1191,6 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
            </button>
         </div>
       </main>
-
-      {/* Mobile Floating Sticky Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-2.5 safe-bar z-30 flex items-center justify-between gap-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] sm:hidden">
-        <button
-          onClick={() => setShowShareModal(true)}
-          className="flex-1 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all border border-slate-200 active:scale-95"
-        >
-          <Share2 size={15} className="text-emerald-600" /> Share Report
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-400 text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all active:scale-95"
-        >
-          {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Save Inspection
-        </button>
-      </div>
 
       {showPropertyModal && <NewPropertyModal onClose={() => setShowPropertyModal(false)} onAdded={(p) => {
         setProperties([...properties, p]); setSelectedPropertyId(p.id); setPropertyName(p.name);
