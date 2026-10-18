@@ -1,13 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Smartphone, X, Share, PlusSquare, ShieldCheck, MoreVertical, Chrome, Apple, Laptop } from 'lucide-react';
+import { Download, Smartphone, X, Share, PlusSquare, ShieldCheck, MoreVertical, Chrome, Apple } from 'lucide-react';
 
-export default function PWAInstallBanner() {
+interface PWAInstallBannerProps {
+  forceOpenModal?: boolean;
+  onCloseModal?: () => void;
+}
+
+export default function PWAInstallBanner({ forceOpenModal, onCloseModal }: PWAInstallBannerProps = {}) {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'ios' | 'android'>('ios');
   const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (forceOpenModal) {
+      setShowGuideModal(true);
+    }
+  }, [forceOpenModal]);
 
   useEffect(() => {
     // Check if running in standalone mode (already installed as PWA without URL bar)
@@ -69,49 +80,51 @@ export default function PWAInstallBanner() {
     sessionStorage.setItem('tryviet_pwa_dismissed', 'true');
   };
 
-  // If already running standalone (no URL bar) or dismissed, don't show the top banner
-  if (isStandalone || dismissed) {
-    return null;
-  }
+  const handleCloseModal = () => {
+    setShowGuideModal(false);
+    if (onCloseModal) onCloseModal();
+  };
 
   return (
     <>
-      {/* Sleek Mobile App Install Banner - Relative positioning to never overlap sticky header */}
-      <div className="relative z-30 bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white px-4 py-2.5 shadow-sm border-b border-blue-500/30">
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 text-xs sm:text-sm">
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
-              <Smartphone size={18} className="text-white" />
+      {/* Top Banner (hidden if already running standalone without URL bar or dismissed in this session) */}
+      {!isStandalone && !dismissed && (
+        <div className="relative z-30 bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white px-4 py-2.5 shadow-sm border-b border-blue-500/30">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 text-xs sm:text-sm">
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
+                <Smartphone size={18} className="text-white" />
+              </div>
+              <div className="truncate">
+                <strong className="font-bold block truncate text-white leading-tight">Install TryViet App</strong>
+                <span className="text-[11px] text-blue-100 truncate block">
+                  Removes browser URL bar & enables 100% offline access
+                </span>
+              </div>
             </div>
-            <div className="truncate">
-              <strong className="font-bold block truncate text-white leading-tight">Install TryViet App</strong>
-              <span className="text-[11px] text-blue-100 truncate block">
-                Removes URL bar & enables 100% offline access
-              </span>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleInstallClick}
-              className="bg-white hover:bg-blue-50 active:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer touch-manipulation"
-            >
-              <Download size={14} className="shrink-0" />
-              <span>{deferredPrompt ? 'Install App' : (isIOS ? 'Add to Home' : 'How to Install')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="text-white/70 hover:text-white p-1.5 rounded-lg transition-colors cursor-pointer touch-manipulation active:scale-90"
-              title="Dismiss for this session"
-              aria-label="Dismiss banner"
-            >
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="bg-white hover:bg-blue-50 active:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer touch-manipulation"
+              >
+                <Download size={14} className="shrink-0" />
+                <span>{deferredPrompt ? 'Install App' : (isIOS ? 'Add to Home' : 'How to Install')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDismiss}
+                className="text-white/70 hover:text-white p-1.5 rounded-lg transition-colors cursor-pointer touch-manipulation active:scale-90"
+                title="Dismiss banner"
+                aria-label="Dismiss banner"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Universal Step-by-Step Install Guide Modal */}
       {showGuideModal && (
@@ -123,13 +136,13 @@ export default function PWAInstallBanner() {
                   TV
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-base leading-tight">Install Mobile App</h3>
-                  <p className="text-[11px] text-slate-500">Run full-screen without the browser URL bar</p>
+                  <h3 className="font-extrabold text-slate-900 text-base leading-tight">Add to Home Screen (PWA)</h3>
+                  <p className="text-[11px] text-slate-500">Removes URL bar so it runs full-screen</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowGuideModal(false)}
+              <button 
+                type="button" 
+                onClick={handleCloseModal} 
                 className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl active:bg-slate-100 cursor-pointer"
               >
                 <X size={20} />
@@ -141,16 +154,18 @@ export default function PWAInstallBanner() {
               <button
                 type="button"
                 onClick={() => setActiveTab('ios')}
-                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${activeTab === 'ios' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                  activeTab === 'ios' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
                 <Apple size={14} /> iPhone / Safari
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('android')}
-                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${activeTab === 'android' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                  activeTab === 'android' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
                 <Chrome size={14} /> Android / Chrome
               </button>
@@ -164,7 +179,7 @@ export default function PWAInstallBanner() {
                     <Share size={18} />
                   </div>
                   <div>
-                    <span className="font-bold text-slate-900 block">1. Tap Safari Share</span>
+                    <span className="font-bold text-slate-900 block">1. Tap Safari Share Icon</span>
                     <p className="text-[11px] text-slate-500 mt-0.5">Tap the Share icon at the bottom of Safari</p>
                   </div>
                 </div>
@@ -174,8 +189,8 @@ export default function PWAInstallBanner() {
                     <PlusSquare size={18} />
                   </div>
                   <div>
-                    <span className="font-bold text-slate-900 block">2. Add to Home Screen</span>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Scroll down and tap "Add to Home Screen"</p>
+                    <span className="font-bold text-slate-900 block">2. Tap "Add to Home Screen"</span>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Scroll down and tap "Add to Home Screen", then "Add"</p>
                   </div>
                 </div>
 
@@ -200,7 +215,7 @@ export default function PWAInstallBanner() {
                   </div>
                   <div>
                     <span className="font-bold text-slate-900 block">1. Tap Chrome Menu</span>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Tap the 3 dots in the top right corner</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Tap the 3 dots (⋮) in the top right corner</p>
                   </div>
                 </div>
 
@@ -209,8 +224,8 @@ export default function PWAInstallBanner() {
                     <Download size={18} />
                   </div>
                   <div>
-                    <span className="font-bold text-slate-900 block">2. Tap "Install App"</span>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Or tap "Add to Home Screen"</p>
+                    <span className="font-bold text-slate-900 block">2. Tap "Install App" or "Add to Home"</span>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Confirm the installation prompt</p>
                   </div>
                 </div>
 
@@ -220,7 +235,7 @@ export default function PWAInstallBanner() {
                   </div>
                   <div>
                     <span className="font-bold text-slate-900 block">3. Open App</span>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Launches in standalone mode with no URL bar</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Launches standalone without the browser URL bar</p>
                   </div>
                 </div>
               </div>
@@ -228,7 +243,7 @@ export default function PWAInstallBanner() {
 
             <button
               type="button"
-              onClick={() => setShowGuideModal(false)}
+              onClick={handleCloseModal}
               className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-2xl text-xs transition-colors cursor-pointer"
             >
               Got It, Close

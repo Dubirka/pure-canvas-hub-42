@@ -1,6 +1,6 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
 import { 
-  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle
+  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle, Smartphone
 } from 'lucide-react';
 import { auth, db, signInWithGoogle, logout } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -14,6 +14,7 @@ import {
   savePropertyToSupabase 
 } from '../services/supabaseStorage';
 import ClientShareReportModal from '../components/ClientShareReportModal';
+import PWAInstallBanner from '../components/PWAInstallBanner';
 
 type StateValue = boolean | string;
 
@@ -70,6 +71,7 @@ export default function Index() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'checklist'>('login');
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -93,15 +95,11 @@ export default function Index() {
     return () => unsubscribe();
   }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     localStorage.removeItem('tryviet_active_user');
     setUser(null);
     setCurrentView('login');
-    try {
-      await logout();
-    } catch (e) {
-      console.warn("Logout error:", e);
-    }
+    logout().catch(e => console.warn("Logout error:", e));
   };
 
   const handleGuestLogin = () => {
@@ -121,29 +119,57 @@ export default function Index() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 pb-24 font-sans">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-4 py-4 shadow-sm">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-28 font-sans">
+      <PWAInstallBanner 
+        forceOpenModal={showInstallGuide} 
+        onCloseModal={() => setShowInstallGuide(false)} 
+      />
+
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-3 sm:px-4 py-2.5 sm:py-3.5 shadow-sm safe-header">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
             {currentView === 'checklist' && (
-              <button onClick={() => setCurrentView('dashboard')} className="p-2 -ml-2 rounded-full hover:bg-slate-100 text-slate-600">
+              <button 
+                type="button"
+                onClick={() => setCurrentView('dashboard')} 
+                aria-label="Back to dashboard"
+                className="h-10 w-10 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 flex items-center justify-center shrink-0 transition-transform active:scale-95 cursor-pointer border border-slate-200"
+              >
                 <ChevronLeft size={24} />
               </button>
             )}
-            <div className="bg-blue-600 p-2 rounded-lg text-white">
+            <div className="bg-blue-600 p-2 rounded-xl text-white shadow-sm flex items-center justify-center shrink-0">
               <Building size={20} />
             </div>
             <div>
-              <h1 className="font-bold text-lg leading-tight">TryViet</h1>
-              <p className="text-xs text-slate-500 font-medium">Apartment Inspection</p>
+              <h1 className="font-extrabold text-base sm:text-lg leading-tight tracking-tight text-slate-900">TryViet</h1>
+              <p className="text-[11px] sm:text-xs text-slate-500 font-medium">Apartment Inspector</p>
             </div>
           </div>
-          {user && (
-            <button onClick={handleLogout} className="text-slate-400 hover:text-slate-600 transition-colors p-2 flex items-center gap-2 text-sm font-medium">
-              <LogOut size={18} />
-              <span className="hidden sm:inline">Logout</span>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowInstallGuide(true)}
+              className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer touch-manipulation shrink-0"
+              aria-label="How to add to home screen"
+            >
+              <Smartphone size={14} className="shrink-0" />
+              <span>How to Add to Home Screen</span>
             </button>
-          )}
+
+            {user && (
+              <button 
+                type="button"
+                onClick={handleLogout} 
+                aria-label="Logout"
+                className="h-10 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 transition-all flex items-center gap-1.5 text-xs sm:text-sm font-semibold shrink-0 cursor-pointer active:scale-95 border border-slate-200 shadow-sm"
+              >
+                <LogOut size={16} className="text-slate-600 shrink-0" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
