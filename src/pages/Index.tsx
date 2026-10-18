@@ -6,6 +6,13 @@ import { auth, db, signInWithGoogle, logout } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, setDoc, getDoc, Timestamp, addDoc } from 'firebase/firestore';
 import { compressImage } from '../imageUtils';
+import { 
+  fetchInspectionsFromSupabase, 
+  fetchInspectionByIdFromSupabase, 
+  saveInspectionToSupabase, 
+  fetchPropertiesFromSupabase, 
+  savePropertyToSupabase 
+} from '../services/supabaseStorage';
 
 type StateValue = boolean | string;
 
@@ -217,29 +224,50 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
   useEffect(() => {
     async function load() {
       try {
-        const q = query(collection(db, 'inspections'), where("userId", "==", user.uid));
-        const snapshot = await getDocs(q);
-        const list: Inspection[] = [];
-        snapshot.forEach(docSnap => list.push({ id: docSnap.id, ...docSnap.data() } as Inspection));
-        
-        // Merge with local storage
-        const local: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
-        const merged = [...list];
-        for (const loc of local) {
-          if (!merged.some(m => m.id === loc.id)) {
-            merged.push(loc);
-          }
+        // 1. Fetch from Supabase backend (Lovable Cloud)
+        const supabaseList = await fetchInspectionsFromSupabase(user.uid);
+
+        // 2. Fetch from Firestore (Firebase)
+        let firestoreList: Inspection[] = [];
+        try {
+          const q = query(collection(db, 'inspections'), where("userId", "==", user.uid));
+          const snapshot = await getDocs(q);
+          snapshot.forEach(docSnap => firestoreList.push({ id: docSnap.id, ...docSnap.data() } as Inspection));
+        } catch (e) {
+          console.warn("Firestore unavailable, checking local & Supabase:", e);
         }
-        merged.sort((a, b) => (b.updatedAt?.seconds || b.updatedAt || 0) - (a.updatedAt?.seconds || a.updatedAt || 0));
+        
+        // 3. Merge with local storage
+        const local: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
+        
+        const mergedMap = new Map<string, Inspection>();
+        [...local, ...firestoreList, ...supabaseList].forEach(item => {
+          if (item && item.id) {
+            const existing = mergedMap.get(item.id);
+            const itemTime = typeof item.updatedAt === 'object' && item.updatedAt?.seconds ? item.updatedAt.seconds * 1000 : Number(item.updatedAt || 0);
+            const existingTime = existing ? (typeof existing.updatedAt === 'object' && existing.updatedAt?.seconds ? existing.updatedAt.seconds * 1000 : Number(existing.updatedAt || 0)) : -1;
+            if (!existing || itemTime >= existingTime) {
+              mergedMap.set(item.id, item);
+            }
+          }
+        });
+
+        const merged = Array.from(mergedMap.values());
+        merged.sort((a, b) => {
+          const timeA = typeof a.updatedAt === 'object' && a.updatedAt?.seconds ? a.updatedAt.seconds * 1000 : Number(a.updatedAt || 0);
+          const timeB = typeof b.updatedAt === 'object' && b.updatedAt?.seconds ? b.updatedAt.seconds * 1000 : Number(b.updatedAt || 0);
+          return timeB - timeA;
+        });
         setInspections(merged);
       } catch (err) {
-        console.warn("Firestore unavailable, loading local inspections:", err);
+        console.warn("Error loading inspections, falling back to local:", err);
         const local: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
         setInspections(local);
       } finally { setLoading(false); }
     }
     load();
   }, [user]);
+
 
   return (
     <main className="max-w-3xl mx-auto p-4 mt-4">
@@ -304,27 +332,50 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
   useEffect(() => {
     async function loadData() {
       try {
+        // Load properties from Supabase & Firestore
+        let props: Property[] = [];
+        try {
+          props = await fetchPropertiesFromSupabase();
+        } catch (e) {
+          console.warn("Could not fetch Supabase properties:", e);
+        }
+
         try {
           const pSnap = await getDocs(collection(db, 'properties'));
-          const props: Property[] = [];
-          pSnap.forEach(d => props.push({ id: d.id, ...d.data() } as Property));
-          setProperties(props);
+          pSnap.forEach(d => {
+            if (!props.some(x => x.id === d.id)) {
+              props.push({ id: d.id, ...d.data() } as Property);
+            }
+          });
         } catch (e) {
-          console.warn("Could not fetch remote properties:", e);
+          console.warn("Could not fetch remote Firestore properties:", e);
         }
+        setProperties(props);
 
         if (inspectionId) {
           let loadedData: Inspection | null = null;
+          
+          // 1. Try Supabase backend (Lovable Cloud)
           try {
-            const docRef = doc(db, 'inspections', inspectionId);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-              loadedData = { id: docSnap.id, ...docSnap.data() } as Inspection;
-            }
+            loadedData = await fetchInspectionByIdFromSupabase(inspectionId);
           } catch (e) {
-            console.warn("Firestore inspection load failed, falling back to local:", e);
+            console.warn("Supabase inspection load failed:", e);
           }
 
+          // 2. Try Firestore
+          if (!loadedData) {
+            try {
+              const docRef = doc(db, 'inspections', inspectionId);
+              const docSnap = await getDoc(docRef);
+              if (docSnap.exists()) {
+                loadedData = { id: docSnap.id, ...docSnap.data() } as Inspection;
+              }
+            } catch (e) {
+              console.warn("Firestore inspection load failed, falling back to local:", e);
+            }
+          }
+
+          // 3. Fallback to localStorage
           if (!loadedData) {
             const localList: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
             loadedData = localList.find(x => x.id === inspectionId) || null;
@@ -370,12 +421,13 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
     try {
       const id = inspectionId || crypto.randomUUID();
       const payload: Partial<Inspection> = {
+        id,
         userId: user.uid, propertyId: selectedPropertyId, landlordName, landlordPhone, propertyName, propertyAddress,
         checklistData: state, notes, images, hiddenFields, labelOverrides, customFields,
         updatedAt: Timestamp.now(), ...(inspectionId ? {} : { createdAt: Timestamp.now() })
       };
 
-      // Always save to localStorage backup
+      // 1. Always save to localStorage backup (offline-first)
       try {
         const localList: any[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
         const idx = localList.findIndex(x => x.id === id);
@@ -387,12 +439,33 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         console.warn("Local storage save error:", localErr);
       }
 
-      // Try saving to Firestore
+      // 2. Save to Supabase backend (Lovable Cloud) for multi-device sync
+      try {
+        await saveInspectionToSupabase({
+          id,
+          userId: user.uid,
+          propertyId: selectedPropertyId,
+          landlordName,
+          landlordPhone,
+          propertyName,
+          propertyAddress,
+          checklistData: state,
+          notes,
+          images,
+          hiddenFields,
+          labelOverrides,
+          customFields,
+        });
+      } catch (supabaseErr) {
+        console.warn("Supabase write failed:", supabaseErr);
+      }
+
+      // 3. Try saving to Firestore as additional backup
       try {
         const docRef = doc(db, 'inspections', id);
         await setDoc(docRef, payload, { merge: true });
       } catch (firestoreErr) {
-        console.warn("Firestore write failed, saved locally:", firestoreErr);
+        console.warn("Firestore write failed, saved locally and to Supabase:", firestoreErr);
       }
 
       onBack();
@@ -996,11 +1069,32 @@ function NewPropertyModal({ onClose, onAdded }: { onClose: () => void, onAdded: 
     e.preventDefault();
     setLoading(true);
     try {
-      const payload = { name, address, landlordName, landlordPhone, createdAt: Timestamp.now() };
-      const docRef = await addDoc(collection(db, 'properties'), payload);
-      onAdded({ id: docRef.id, ...payload });
-    } catch (err) { alert("Failed to add property"); } 
-    finally { setLoading(false); }
+      const id = crypto.randomUUID();
+      const propertyItem: Property = { id, name, address, landlordName, landlordPhone };
+
+      // 1. Save to Supabase backend (Lovable Cloud)
+      try {
+        await savePropertyToSupabase(propertyItem);
+      } catch (supabaseErr) {
+        console.warn("Supabase save property failed:", supabaseErr);
+      }
+
+      // 2. Try saving to Firestore
+      try {
+        await setDoc(doc(db, 'properties', id), {
+          ...propertyItem,
+          createdAt: Timestamp.now()
+        });
+      } catch (firestoreErr) {
+        console.warn("Firestore property save failed (non-fatal):", firestoreErr);
+      }
+
+      onAdded(propertyItem);
+    } catch (err) {
+      alert("Failed to add property");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

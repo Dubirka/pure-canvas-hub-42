@@ -14,7 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      inspections: {
+        Row: {
+          id: string
+          user_id: string
+          property_id: string | null
+          landlord_name: string | null
+          landlord_phone: string | null
+          property_name: string | null
+          property_address: string | null
+          checklist_data: Json | null
+          notes: Json | null
+          images: Json | null
+          hidden_fields: Json | null
+          label_overrides: Json | null
+          custom_fields: Json | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id: string
+          user_id: string
+          property_id?: string | null
+          landlord_name?: string | null
+          landlord_phone?: string | null
+          property_name?: string | null
+          property_address?: string | null
+          checklist_data?: Json | null
+          notes?: Json | null
+          images?: Json | null
+          hidden_fields?: Json | null
+          label_overrides?: Json | null
+          custom_fields?: Json | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          property_id?: string | null
+          landlord_name?: string | null
+          landlord_phone?: string | null
+          property_name?: string | null
+          property_address?: string | null
+          checklist_data?: Json | null
+          notes?: Json | null
+          images?: Json | null
+          hidden_fields?: Json | null
+          label_overrides?: Json | null
+          custom_fields?: Json | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      properties: {
+        Row: {
+          id: string
+          name: string
+          address: string | null
+          landlord_name: string | null
+          landlord_phone: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id: string
+          name: string
+          address?: string | null
+          landlord_name?: string | null
+          landlord_phone?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          address?: string | null
+          landlord_name?: string | null
+          landlord_phone?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
