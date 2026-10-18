@@ -74,3 +74,41 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Native Mobile App Touch & Feel (PWA) */
+html, body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Prevent accidental text selection on UI controls */
+button, nav, header, [role="button"], label, .badge {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* iOS Safe Area Inset Helpers */
+.safe-top {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.safe-header {
+  padding-top: max(1rem, calc(0.75rem + env(safe-area-inset-top)));
+}
+
+.safe-bar {
+  padding-bottom: max(0.75rem, calc(0.5rem + env(safe-area-inset-bottom)));
+}
+
