@@ -5,14 +5,16 @@ import {
 import { db } from '../firebase';
 import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable/index';
-import { collection, query, where, getDocs, doc, setDoc, getDoc, Timestamp, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, getDoc, deleteDoc, Timestamp, addDoc } from 'firebase/firestore';
 import { compressImage } from '../imageUtils';
 import { 
   fetchInspectionsFromSupabase, 
   fetchInspectionByIdFromSupabase, 
   saveInspectionToSupabase, 
+  deleteInspectionFromSupabase,
   fetchPropertiesFromSupabase, 
   savePropertyToSupabase,
+  deletePropertyFromSupabase,
   mapRowToInspection,
   testSupabaseAccess
 } from '../services/supabaseStorage';
@@ -309,6 +311,32 @@ function getAllLocalInspections(userUid: string): Inspection[] {
   return Array.from(map.values());
 }
 
+function removeLocalInspection(id: string) {
+  try {
+    const keysToUpdate: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('inspections') || key === 'inspections' || key.startsWith('tryviet_inspections') || key.startsWith('inspection_') || key.startsWith('tryviet_active_draft_'))) {
+        keysToUpdate.push(key);
+      }
+    }
+    keysToUpdate.forEach(key => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          localStorage.setItem(key, JSON.stringify(parsed.filter(item => item?.id !== id)));
+        } else if (parsed && typeof parsed === 'object' && parsed.id === id) {
+          localStorage.removeItem(key);
+        }
+      } catch {}
+    });
+  } catch (e) {
+    console.warn("Could not remove local inspection:", e);
+  }
+}
+
 function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenChecklist: (id: string | null) => void }) {
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -319,6 +347,10 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
   const [cloudSyncFeedback, setCloudSyncFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string; details?: string } | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+  const [propertiesList, setPropertiesList] = useState<Property[]>([]);
+  const [showPropertiesModal, setShowPropertiesModal] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
+  const [showCreatePropertyModal, setShowCreatePropertyModal] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -327,6 +359,21 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         const supabaseList = await fetchInspectionsFromSupabase(user.uid);
         const sbIds = new Set(supabaseList.map(s => s.id));
         setSupabaseSyncedIds(sbIds);
+
+        // Fetch saved properties/buildings
+        try {
+          const sbProps = await fetchPropertiesFromSupabase();
+          if (sbProps.length > 0) {
+            setPropertiesList(sbProps);
+          } else {
+            const propSnap = await getDocs(collection(db, 'properties'));
+            const fbProps: Property[] = [];
+            propSnap.forEach(d => fbProps.push({ id: d.id, ...d.data() } as Property));
+            setPropertiesList(fbProps);
+          }
+        } catch (e) {
+          console.warn("Could not load properties list:", e);
+        }
 
         // 2. Fetch from Firestore (Firebase)
         let firestoreList: Inspection[] = [];
@@ -456,6 +503,33 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
     setTimeout(() => setCopiedBackup(false), 2500);
   };
 
+  const handleDeleteInspection = async (id: string, label: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete inspection "${label}"? This removes it from this device and cloud storage.`)) return;
+
+    removeLocalInspection(id);
+    setInspections(prev => prev.filter(item => item.id !== id));
+    setSupabaseSyncedIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+
+    await deleteInspectionFromSupabase(id);
+    try {
+      await deleteDoc(doc(db, 'inspections', id));
+    } catch {}
+  };
+
+  const handleDeleteProperty = async (prop: Property) => {
+    if (!window.confirm(`Delete building/property "${prop.name}"? Existing unit inspections will remain, but the saved building template will be removed.`)) return;
+    setPropertiesList(prev => prev.filter(p => p.id !== prop.id));
+    await deletePropertyFromSupabase(prop.id);
+    try {
+      await deleteDoc(doc(db, 'properties', prop.id));
+    } catch {}
+  };
+
   // Find any active unsaved draft
   const activeDraftRaw = localStorage.getItem(`tryviet_active_draft_${user.uid}`);
   let activeDraftItem: Inspection | null = null;
@@ -501,6 +575,13 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShowPropertiesModal(true)}
+            title="Edit or remove saved buildings / properties"
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-200"
+          >
+            <Building size={14} /> Buildings
+          </button>
           {inspections.length > 0 && (
             <button 
               onClick={handleManualCloudSync}
@@ -672,7 +753,17 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
                                 {formattedDate && <span className="text-slate-400">{formattedDate}</span>}
                               </div>
                             </div>
-                            <ChevronLeft size={18} className="text-slate-300 rotate-180 group-hover:text-blue-500 transition-transform shrink-0 ml-2" />
+                            <div className="flex items-center gap-1 shrink-0 ml-2">
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteInspection(insp.id, insp.unitFloor || insp.propertyName || 'Unit Inspection', e)}
+                                title="Delete Inspection"
+                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                              <ChevronLeft size={18} className="text-slate-300 rotate-180 group-hover:text-blue-500 transition-transform" />
+                            </div>
                           </div>
                         );
                       })}
@@ -717,6 +808,78 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
           </div>
         </div>
       )}
+
+      {showPropertiesModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200 max-h-[85vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="font-bold text-base text-slate-800">Manage Buildings & Properties</h3>
+                <p className="text-xs text-slate-500">Edit or remove saved building profiles</p>
+              </div>
+              <button onClick={() => setShowPropertiesModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-2.5 flex-1">
+              {propertiesList.length === 0 ? (
+                <p className="text-sm text-slate-500 text-center py-6">No saved buildings yet.</p>
+              ) : (
+                propertiesList.map(prop => (
+                  <div key={prop.id} className="p-3.5 rounded-xl border border-slate-200 flex items-center justify-between gap-3 bg-slate-50/40">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm text-slate-900 truncate">{prop.name}</div>
+                      <div className="text-xs text-slate-500 truncate">
+                        {[prop.neighborhood, prop.address, prop.landlordName].filter(Boolean).join(' • ')}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setEditingProperty(prop)}
+                        title="Edit Building"
+                        className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProperty(prop)}
+                        title="Delete Building"
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowCreatePropertyModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5"
+              >
+                <Plus size={14} /> Add New Building
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(editingProperty || showCreatePropertyModal) && (
+        <PropertyModal
+          initialProperty={editingProperty}
+          onClose={() => { setEditingProperty(null); setShowCreatePropertyModal(false); }}
+          onSaved={(savedProp) => {
+            setPropertiesList(prev => {
+              const exists = prev.some(p => p.id === savedProp.id);
+              return exists ? prev.map(p => p.id === savedProp.id ? savedProp : p) : [...prev, savedProp];
+            });
+            setEditingProperty(null);
+            setShowCreatePropertyModal(false);
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -726,6 +889,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
   const [saving, setSaving] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
   const [showPropertyModal, setShowPropertyModal] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [editMode, setEditMode] = useState(false);
   
   // Property Metadata
@@ -1188,12 +1352,43 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
           <div className="p-5 space-y-4 border-t border-slate-100">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Select Property</label>
-            <div className="flex gap-2">
-              <select value={selectedPropertyId} onChange={handlePropertySelect} className="flex-1 bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500">
+            <div className="flex flex-wrap gap-2">
+              <select value={selectedPropertyId} onChange={handlePropertySelect} className="flex-1 min-w-[180px] bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500">
                 <option value="">-- Custom / Unlisted --</option>
                 {properties.map(p => <option key={p.id} value={p.id}>{p.name} ({p.neighborhood || 'Da Nang'}) - {p.landlordName}</option>)}
               </select>
-              <button onClick={() => setShowPropertyModal(true)} title="Add Property" className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 flex items-center gap-1 font-medium text-sm"><Plus size={18} /> New</button>
+              {selectedPropertyId && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const found = properties.find(p => p.id === selectedPropertyId);
+                      if (found) setEditingProperty(found);
+                    }}
+                    title="Edit Selected Property"
+                    className="px-3 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-700 flex items-center gap-1 font-medium text-sm border border-blue-200"
+                  >
+                    <Edit3 size={16} /> Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const found = properties.find(p => p.id === selectedPropertyId);
+                      if (!found) return;
+                      if (!window.confirm(`Delete saved building "${found.name}"?`)) return;
+                      setProperties(prev => prev.filter(p => p.id !== found.id));
+                      setSelectedPropertyId('');
+                      await deletePropertyFromSupabase(found.id);
+                      try { await deleteDoc(doc(db, 'properties', found.id)); } catch {}
+                    }}
+                    title="Delete Selected Property"
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 rounded-lg text-red-600 flex items-center gap-1 font-medium text-sm border border-red-200"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </>
+              )}
+              <button type="button" onClick={() => setShowPropertyModal(true)} title="Add Property" className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 flex items-center gap-1 font-medium text-sm"><Plus size={18} /> New</button>
             </div>
           </div>
           
@@ -1657,26 +1852,57 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
           )}
         </section>
 
-        <div className="pt-4 pb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="pt-4 pb-8 flex flex-col sm:flex-row justify-between items-center gap-3">
            <button 
              onClick={() => setShowShareModal(true)} 
              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 text-base shadow-sm transition-colors"
            >
              <Share2 size={18} /> Preview Client Report
            </button>
-           <button onClick={handleSave} disabled={saving} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-8 py-3 rounded-xl font-medium flex items-center justify-center gap-2 text-lg shadow-sm">
-             {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />} Save Inspection
-           </button>
+           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+             {inspectionId && (
+               <button
+                 type="button"
+                 onClick={async () => {
+                   if (!window.confirm(`Delete this inspection (${unitFloor || propertyName || 'Untitled'})?`)) return;
+                   removeLocalInspection(inspectionId);
+                   await deleteInspectionFromSupabase(inspectionId);
+                   try { await deleteDoc(doc(db, 'inspections', inspectionId)); } catch {}
+                   onBack();
+                 }}
+                 className="w-full sm:w-auto bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-5 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 text-sm transition-colors"
+               >
+                 <Trash2 size={18} /> Delete
+               </button>
+             )}
+             <button onClick={handleSave} disabled={saving} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-8 py-3 rounded-xl font-medium flex items-center justify-center gap-2 text-lg shadow-sm">
+               {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />} Save Inspection
+             </button>
+           </div>
         </div>
       </main>
 
-      {showPropertyModal && <NewPropertyModal onClose={() => setShowPropertyModal(false)} onAdded={(p) => {
-        setProperties([...properties, p]); setSelectedPropertyId(p.id); setPropertyName(p.name);
-        setPropertyAddress(p.address); setLandlordName(p.landlordName); setLandlordPhone(p.landlordPhone);
-        if (p.neighborhood) setNeighborhood(p.neighborhood);
-        if (p.landlordZalo) setLandlordZalo(p.landlordZalo);
-        setShowPropertyModal(false);
-      }} />}
+      {(showPropertyModal || editingProperty) && (
+        <PropertyModal
+          initialProperty={editingProperty}
+          onClose={() => { setShowPropertyModal(false); setEditingProperty(null); }}
+          onSaved={(p) => {
+            setProperties(prev => {
+              const exists = prev.some(item => item.id === p.id);
+              return exists ? prev.map(item => item.id === p.id ? p : item) : [...prev, p];
+            });
+            setSelectedPropertyId(p.id);
+            setPropertyName(p.name);
+            setPropertyAddress(p.address);
+            setLandlordName(p.landlordName);
+            setLandlordPhone(p.landlordPhone);
+            if (p.neighborhood) setNeighborhood(p.neighborhood);
+            if (p.landlordZalo !== undefined) setLandlordZalo(p.landlordZalo);
+            setShowPropertyModal(false);
+            setEditingProperty(null);
+          }}
+        />
+      )}
 
       {showShareModal && (
         <ClientShareReportModal 
@@ -2051,20 +2277,21 @@ function SmartInput({ id, placeholder, options, ctx, autoVnd = false }: any) {
   );
 }
 
-function NewPropertyModal({ onClose, onAdded }: { onClose: () => void, onAdded: (p: Property) => void }) {
+function PropertyModal({ initialProperty, onClose, onSaved }: { initialProperty?: Property | null, onClose: () => void, onSaved: (p: Property) => void }) {
+  const isEdit = Boolean(initialProperty?.id);
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [neighborhood, setNeighborhood] = useState('An Thuong / My Khe');
-  const [landlordName, setLandlordName] = useState('');
-  const [landlordPhone, setLandlordPhone] = useState('');
-  const [landlordZalo, setLandlordZalo] = useState('');
+  const [name, setName] = useState(initialProperty?.name || '');
+  const [address, setAddress] = useState(initialProperty?.address || '');
+  const [neighborhood, setNeighborhood] = useState(initialProperty?.neighborhood || 'An Thuong / My Khe');
+  const [landlordName, setLandlordName] = useState(initialProperty?.landlordName || '');
+  const [landlordPhone, setLandlordPhone] = useState(initialProperty?.landlordPhone || '');
+  const [landlordZalo, setLandlordZalo] = useState(initialProperty?.landlordZalo || '');
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const id = crypto.randomUUID();
+      const id = initialProperty?.id || crypto.randomUUID();
       const propertyItem: Property = { 
         id, 
         name, 
@@ -2086,15 +2313,16 @@ function NewPropertyModal({ onClose, onAdded }: { onClose: () => void, onAdded: 
       try {
         await setDoc(doc(db, 'properties', id), {
           ...propertyItem,
-          createdAt: Timestamp.now()
-        });
+          updatedAt: Timestamp.now(),
+          ...(isEdit ? {} : { createdAt: Timestamp.now() })
+        }, { merge: true });
       } catch (firestoreErr) {
         console.warn("Firestore property save failed (non-fatal):", firestoreErr);
       }
 
-      onAdded(propertyItem);
+      onSaved(propertyItem);
     } catch (err) {
-      alert("Failed to add property");
+      alert(isEdit ? "Failed to update property" : "Failed to add property");
     } finally {
       setLoading(false);
     }
@@ -2104,7 +2332,7 @@ function NewPropertyModal({ onClose, onAdded }: { onClose: () => void, onAdded: 
     <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-          <h3 className="font-bold text-lg text-slate-800">Add New Property</h3>
+          <h3 className="font-bold text-lg text-slate-800">{isEdit ? 'Edit Building / Property' : 'Add New Property'}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
         </div>
         <form onSubmit={submit} className="p-5 space-y-3.5">

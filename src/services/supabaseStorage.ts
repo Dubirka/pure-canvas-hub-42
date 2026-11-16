@@ -236,6 +236,25 @@ export async function saveInspectionToSupabase(inspection: Partial<Inspection>):
   }
 }
 
+export async function deleteInspectionFromSupabase(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('inspections')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.warn('Supabase delete inspection error:', error.message);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.warn('Supabase delete inspection exception:', err);
+    return { success: false, error: err?.message || String(err) };
+  }
+}
+
 export async function fetchPropertiesFromSupabase(): Promise<Property[]> {
   try {
     const { data, error } = await supabase
@@ -285,6 +304,25 @@ export async function savePropertyToSupabase(property: Property): Promise<{ succ
     return { success: true };
   } catch (err: any) {
     console.warn('Supabase save property exception:', err);
+    return { success: false, error: err?.message || String(err) };
+  }
+}
+
+export async function deletePropertyFromSupabase(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('properties')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.warn('Supabase delete property error:', error.message);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.warn('Supabase delete property exception:', err);
     return { success: false, error: err?.message || String(err) };
   }
 }
