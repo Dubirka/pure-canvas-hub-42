@@ -492,14 +492,14 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col gap-3 mb-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Your Inspections</h2>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 mt-0.5 break-all">
             {user.isAnonymous ? 'Guest Inspector Mode (Saved locally on this device)' : `Signed in as ${user.email || user.displayName}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {inspections.length > 0 && (
             <button 
               onClick={handleManualCloudSync}
