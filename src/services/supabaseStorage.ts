@@ -205,7 +205,19 @@ export async function fetchInspectionByIdFromSupabase(id: string): Promise<Inspe
   }
 }
 
-export async function saveInspectionToSupabase(inspection: Partial<Inspection>): Promise<boolean> {
+export async function testSupabaseAccess(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('inspections').select('id').limit(1);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+export async function saveInspectionToSupabase(inspection: Partial<Inspection>): Promise<{ success: boolean; error?: string }> {
   try {
     const row = mapInspectionToRow(inspection);
     const { error } = await supabase
@@ -214,13 +226,13 @@ export async function saveInspectionToSupabase(inspection: Partial<Inspection>):
 
     if (error) {
       console.warn('Supabase save inspection error:', error.message);
-      return false;
+      return { success: false, error: error.message };
     }
 
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('Supabase save inspection exception:', err);
-    return false;
+    return { success: false, error: err?.message || String(err) };
   }
 }
 
@@ -251,7 +263,7 @@ export async function fetchPropertiesFromSupabase(): Promise<Property[]> {
   }
 }
 
-export async function savePropertyToSupabase(property: Property): Promise<boolean> {
+export async function savePropertyToSupabase(property: Property): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabase
       .from('properties')
@@ -267,12 +279,12 @@ export async function savePropertyToSupabase(property: Property): Promise<boolea
 
     if (error) {
       console.warn('Supabase save property error:', error.message);
-      return false;
+      return { success: false, error: error.message };
     }
 
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('Supabase save property exception:', err);
-    return false;
+    return { success: false, error: err?.message || String(err) };
   }
 }

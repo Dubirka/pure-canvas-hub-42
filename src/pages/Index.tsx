@@ -1,6 +1,6 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
 import { 
-  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle, Download, Copy, Check
+  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle, Download, Copy, Check, Cloud, CloudUpload, Smartphone
 } from 'lucide-react';
 import { db } from '../firebase';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,7 +14,8 @@ import {
   saveInspectionToSupabase, 
   fetchPropertiesFromSupabase, 
   savePropertyToSupabase,
-  mapRowToInspection
+  mapRowToInspection,
+  testSupabaseAccess
 } from '../services/supabaseStorage';
 import ClientShareReportModal from '../components/ClientShareReportModal';
 import PWAInstallBanner from '../components/PWAInstallBanner';
@@ -317,12 +318,18 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
   const [loading, setLoading] = useState(true);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [copiedBackup, setCopiedBackup] = useState(false);
+  const [supabaseSyncedIds, setSupabaseSyncedIds] = useState<Set<string>>(new Set());
+  const [cloudSyncing, setCloudSyncing] = useState(false);
+  const [cloudSyncFeedback, setCloudSyncFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string; details?: string } | null>(null);
+  const [copiedSql, setCopiedSql] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
         // 1. Fetch from Supabase backend (Lovable Cloud)
         const supabaseList = await fetchInspectionsFromSupabase(user.uid);
+        const sbIds = new Set(supabaseList.map(s => s.id));
+        setSupabaseSyncedIds(sbIds);
 
         // 2. Fetch from Firestore (Firebase)
         let firestoreList: Inspection[] = [];
@@ -363,10 +370,17 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         setInspections(merged);
 
         // Auto-sync existing locally stored inspections to Supabase backend in the background
-        const supabaseIds = new Set(supabaseList.map(s => s.id));
-        const unsyncedLocals = local.filter(loc => loc.id && !supabaseIds.has(loc.id));
+        const unsyncedLocals = local.filter(loc => loc.id && !sbIds.has(loc.id));
         if (unsyncedLocals.length > 0) {
-          Promise.allSettled(unsyncedLocals.map(loc => saveInspectionToSupabase(loc))).catch(err => {
+          Promise.allSettled(unsyncedLocals.map(loc => saveInspectionToSupabase(loc))).then(results => {
+            const newSynced = new Set(sbIds);
+            results.forEach((res, i) => {
+              if (res.status === 'fulfilled' && res.value && (res.value as any).success) {
+                newSynced.add(unsyncedLocals[i].id);
+              }
+            });
+            setSupabaseSyncedIds(newSynced);
+          }).catch(err => {
             console.warn("Background auto-sync of local checklists to Supabase:", err);
           });
         }
@@ -378,6 +392,65 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
     }
     load();
   }, [user]);
+
+  const handleManualCloudSync = async () => {
+    setCloudSyncing(true);
+    setCloudSyncFeedback(null);
+    try {
+      const access = await testSupabaseAccess();
+      if (!access.ok) {
+        setCloudSyncFeedback({
+          type: 'error',
+          message: 'Supabase blocked cloud sync (Permission Denied).',
+          details: access.error || 'Row Level Security policy is restricting access for unauthenticated or guest sessions.',
+        });
+        return;
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+      let lastErr = '';
+
+      for (const item of inspections) {
+        const res = await saveInspectionToSupabase(item);
+        if (res.success) {
+          successCount++;
+          setSupabaseSyncedIds(prev => new Set([...prev, item.id]));
+        } else {
+          failCount++;
+          lastErr = res.error || 'Failed to save row';
+        }
+      }
+
+      if (failCount === 0) {
+        setCloudSyncFeedback({
+          type: 'success',
+          message: `All ${successCount} inspection(s) successfully synced to Supabase!`,
+        });
+      } else {
+        setCloudSyncFeedback({
+          type: 'error',
+          message: `Synced ${successCount} inspection(s), but ${failCount} failed.`,
+          details: lastErr,
+        });
+      }
+    } catch (err: any) {
+      setCloudSyncFeedback({
+        type: 'error',
+        message: 'Could not connect to Supabase backend.',
+        details: err?.message || String(err),
+      });
+    } finally {
+      setCloudSyncing(false);
+    }
+  };
+
+  const handleCopySqlFix = () => {
+    const sql = `GRANT ALL ON TABLE public.inspections TO anon, authenticated, service_role;\nGRANT ALL ON TABLE public.properties TO anon, authenticated, service_role;\nCREATE POLICY "Allow public read on inspections" ON public.inspections FOR SELECT TO anon, authenticated USING (true);\nCREATE POLICY "Allow public insert on inspections" ON public.inspections FOR INSERT TO anon, authenticated WITH CHECK (true);\nCREATE POLICY "Allow public update on inspections" ON public.inspections FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);\nCREATE POLICY "Allow public delete on inspections" ON public.inspections FOR DELETE TO anon, authenticated USING (true);`;
+    navigator.clipboard.writeText(sql);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2500);
+  };
 
   const handleCopyBackup = () => {
     const rawData = JSON.stringify(inspections, null, 2);
@@ -433,6 +506,17 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         <div className="flex items-center gap-2">
           {inspections.length > 0 && (
             <button 
+              onClick={handleManualCloudSync}
+              disabled={cloudSyncing}
+              title="Sync all inspections to Supabase cloud"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-200"
+            >
+              <CloudUpload size={14} className={cloudSyncing ? "animate-bounce text-blue-600" : "text-slate-600"} />
+              {cloudSyncing ? 'Syncing...' : 'Sync Cloud'}
+            </button>
+          )}
+          {inspections.length > 0 && (
+            <button 
               onClick={() => setShowBackupModal(true)}
               title="View or copy raw backup of saved inspections"
               className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-200"
@@ -445,6 +529,36 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
           </button>
         </div>
       </div>
+
+      {cloudSyncFeedback && (
+        <div className={`p-4 rounded-2xl border text-xs leading-relaxed flex flex-col gap-2 ${cloudSyncFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+          <div className="flex items-center justify-between">
+            <span className="font-semibold flex items-center gap-1.5">
+              {cloudSyncFeedback.type === 'success' ? <CheckCircle2 size={16} className="text-emerald-600" /> : <AlertTriangle size={16} className="text-amber-600" />}
+              {cloudSyncFeedback.message}
+            </span>
+            <button onClick={() => setCloudSyncFeedback(null)} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+          </div>
+          {cloudSyncFeedback.details && (
+            <p className="font-mono text-[11px] bg-white/70 p-2 rounded-lg border border-amber-200/50 break-words">
+              {cloudSyncFeedback.details}
+            </p>
+          )}
+          {cloudSyncFeedback.type === 'error' && (
+            <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+              <span className="text-[11px] text-amber-700">Supabase RLS is blocking public writes. Apply migration 0002 to enable.</span>
+              <button 
+                onClick={handleCopySqlFix} 
+                className="bg-amber-600 hover:bg-amber-700 text-white font-medium px-2.5 py-1 rounded-lg text-[11px] flex items-center gap-1 shrink-0"
+              >
+                {copiedSql ? <Check size={12} /> : <Copy size={12} />}
+                {copiedSql ? 'Copied SQL!' : 'Copy SQL Fix'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-600" size={32} /></div>
       ) : inspections.length === 0 ? (
@@ -456,6 +570,7 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         <div className="grid gap-3">
           {inspections.map(insp => {
             const checksCount = Object.keys(insp.checklistData || {}).length;
+            const isSynced = supabaseSyncedIds.has(insp.id);
             const formattedDate = insp.updatedAt 
               ? new Date(typeof insp.updatedAt === 'number' ? insp.updatedAt : (insp.updatedAt?.seconds ? insp.updatedAt.seconds * 1000 : Date.now())).toLocaleDateString('en-US', {
                   month: 'short',
@@ -471,6 +586,10 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
                     <h3 className="font-semibold text-slate-900 text-lg leading-tight">{insp.propertyName || 'Unnamed Property'}</h3>
                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${checksCount > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-500'}`}>
                       {checksCount > 0 ? `${checksCount} checks recorded` : 'Empty Checklist'}
+                    </span>
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${isSynced ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                      {isSynced ? <Cloud size={11} /> : <Smartphone size={11} />}
+                      {isSynced ? 'Cloud Synced' : 'Device Only'}
                     </span>
                     {insp.verdictScore && (
                       <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
