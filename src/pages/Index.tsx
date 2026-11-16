@@ -2,8 +2,10 @@ import React, { useState, useEffect, type ReactNode } from 'react';
 import { 
   CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle, Download, Copy, Check
 } from 'lucide-react';
-import { auth, db, signInWithGoogle, logout } from '../firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { db } from '../firebase';
+import { supabase } from '@/integrations/supabase/client';
+import { lovable } from '@/integrations/lovable/index';
+import { LovableMark } from '@lovable.dev/cloud-auth-js/react';
 import { collection, query, where, getDocs, doc, setDoc, getDoc, Timestamp, addDoc } from 'firebase/firestore';
 import { compressImage } from '../imageUtils';
 import { 
@@ -74,32 +76,37 @@ export default function Index() {
   const [currentInspectionId, setCurrentInspectionId] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        const u = { uid: currentUser.uid, displayName: currentUser.displayName, email: currentUser.email };
+    const apply = (session: any) => {
+      const su = session?.user;
+      if (su) {
+        const u: AuthUser = { uid: su.id, displayName: su.user_metadata?.full_name ?? su.user_metadata?.name ?? null, email: su.email };
         setUser(u);
         localStorage.setItem('tryviet_active_user', JSON.stringify(u));
         setCurrentView(v => v === 'login' ? 'dashboard' : v);
       } else {
-        const guest = localStorage.getItem('tryviet_active_user');
-        if (guest) {
-          setUser(JSON.parse(guest));
+        const saved = localStorage.getItem('tryviet_active_user');
+        const parsed = saved ? JSON.parse(saved) : null;
+        if (parsed?.isAnonymous) {
+          setUser(parsed);
           setCurrentView(v => v === 'login' ? 'dashboard' : v);
         } else {
+          localStorage.removeItem('tryviet_active_user');
           setUser(null);
           setCurrentView('login');
         }
       }
       setLoadingAuth(false);
-    });
-    return () => unsubscribe();
+    };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => apply(session));
+    supabase.auth.getSession().then(({ data }) => apply(data.session));
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('tryviet_active_user');
     setUser(null);
     setCurrentView('login');
-    logout().catch(e => console.warn("Logout error:", e));
+    supabase.auth.signOut().catch(e => console.warn("Logout error:", e));
   };
 
   const handleGuestLogin = () => {
@@ -170,70 +177,84 @@ export default function Index() {
   );
 }
 
+const GoogleLogo = () => (
+  <svg aria-hidden="true" width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.480-1.14 2.73-2.4 3.58v3h3.860c2.26-2.09 3.56-5.17 3.56-8.82z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"/><path fill="#FBBC05" d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.950 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/></svg>
+);
+
 function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
-  const handleLogin = async () => {
+  const handleEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setErrorMessage(null); setInfo(null);
     try {
-      setLoading(true);
-      setErrorMessage(null);
-      await signInWithGoogle();
-    } catch (e: any) {
-      console.error("Login failure details:", e);
-      if (e.code === 'auth/unauthorized-domain') {
-        setErrorMessage(`Domain unauthorized (${window.location.hostname}). Add it to Firebase Console > Authentication > Settings > Authorized Domains, or use Guest Inspector mode below.`);
-      } else if (e.code === 'auth/popup-blocked') {
-        setErrorMessage("Sign-in popup was blocked by your browser. Please allow popups for this site, or use Guest Inspector mode.");
-      } else if (e.code === 'auth/popup-closed-by-user') {
-        setErrorMessage("Sign-in popup was closed before completing.");
-      } else if (e.code === 'auth/operation-not-allowed') {
-        setErrorMessage("Google Sign-In is not enabled in Firebase Console > Authentication > Sign-in method.");
+      if (mode === 'signup') {
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
+        if (error) throw error;
+        if (!data.session) setInfo('Check your email to confirm your account, then sign in.');
       } else {
-        setErrorMessage(e.message || "Failed to sign in. Check console for details.");
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
       }
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Something went wrong.');
+    } finally { setLoading(false); }
   };
+
+  const handleOAuth = async (provider: 'google' | 'lovable') => {
+    setErrorMessage(null);
+    const result = await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
+    if (result.error) setErrorMessage(result.error.message || 'Sign-in failed.');
+  };
+
+  const providerBtn = "w-full h-11 px-3 rounded-xl flex items-center justify-center gap-2.5 text-sm font-medium transition-colors";
 
   return (
     <main className="max-w-md mx-auto mt-16 p-6 bg-white rounded-2xl shadow-sm border border-slate-200 text-center">
       <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
         <Building size={32} />
       </div>
-      <h2 className="text-2xl font-bold mb-2">Inspector Portal</h2>
+      <h2 className="text-2xl font-bold mb-2">{mode === 'signin' ? 'Inspector Portal' : 'Create your account'}</h2>
       <p className="text-slate-500 mb-6">Sign in to manage your property inspections and save checklists securely.</p>
-      
+
       {errorMessage && (
-        <div className="mb-5 p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs text-left leading-relaxed">
-          <strong className="block mb-1 font-semibold text-amber-800 flex items-center gap-1.5">
-            <ShieldAlert size={15} className="shrink-0 text-amber-600" /> Sign-In Notice
-          </strong>
-          {errorMessage}
+        <div className="mb-5 p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs text-left leading-relaxed flex gap-1.5">
+          <ShieldAlert size={15} className="shrink-0 text-amber-600" /> {errorMessage}
         </div>
       )}
+      {info && <div className="mb-5 p-3.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-xs text-left">{info}</div>}
 
       <div className="space-y-3">
-        <button 
-          onClick={handleLogin} 
-          disabled={loading} 
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
-        >
-          {loading ? <Loader2 className="animate-spin" size={20} /> : "Sign in with Google"}
+        <button type="button" onClick={() => handleOAuth('google')} className={providerBtn} style={{ background: '#FFFFFF', border: '1px solid #747775', color: '#1F1F1F' }}>
+          <GoogleLogo /> Continue with Google
+        </button>
+        <button type="button" onClick={() => handleOAuth('lovable')} className={`${providerBtn} bg-white border border-slate-300 text-slate-800 hover:bg-slate-50`}>
+          <LovableMark className="h-[18px] w-[18px]" /> Continue with Lovable
         </button>
 
         <div className="relative flex py-2 items-center">
           <div className="flex-grow border-t border-slate-200"></div>
-          <span className="flex-shrink mx-3 text-xs text-slate-400 font-medium uppercase">Or</span>
+          <span className="flex-shrink mx-3 text-xs text-slate-400 font-medium uppercase">Or with email</span>
           <div className="flex-grow border-t border-slate-200"></div>
         </div>
 
-        <button 
-          onClick={onGuestLogin} 
-          type="button"
-          className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm"
-        >
+        <form onSubmit={handleEmail} className="space-y-3 text-left">
+          <input type="email" required placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm" />
+          <input type="password" required minLength={6} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm" />
+          <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2">
+            {loading ? <Loader2 className="animate-spin" size={20} /> : (mode === 'signin' ? 'Sign in' : 'Sign up')}
+          </button>
+        </form>
+        <button type="button" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setErrorMessage(null); setInfo(null); }} className="text-sm text-blue-600 hover:underline">
+          {mode === 'signin' ? "No account? Sign up" : 'Already have an account? Sign in'}
+        </button>
+
+        <button onClick={onGuestLogin} type="button" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-4 rounded-xl text-sm">
           Continue as Guest Inspector (Offline / Demo)
         </button>
       </div>
