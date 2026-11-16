@@ -1,6 +1,6 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
 import { 
-  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle, Download, Copy, Check, Cloud, CloudUpload, Smartphone
+  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, ChevronDown, ChevronRight, Folder, FolderOpen, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle, Download, Copy, Check, Cloud, CloudUpload, Smartphone
 } from 'lucide-react';
 import { db } from '../firebase';
 import { supabase } from '@/integrations/supabase/client';
@@ -318,6 +318,7 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
   const [cloudSyncing, setCloudSyncing] = useState(false);
   const [cloudSyncFeedback, setCloudSyncFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string; details?: string } | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     async function load() {
@@ -562,55 +563,127 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
           <FileText className="mx-auto text-slate-300 mb-3" size={48} />
           <p className="text-slate-500 font-medium">No inspections yet</p>
         </div>
-      ) : (
-        <div className="grid gap-3">
-          {inspections.map(insp => {
-            const checksCount = Object.keys(insp.checklistData || {}).length;
-            const isSynced = supabaseSyncedIds.has(insp.id);
-            const formattedDate = insp.updatedAt 
-              ? new Date(typeof insp.updatedAt === 'number' ? insp.updatedAt : (insp.updatedAt?.seconds ? insp.updatedAt.seconds * 1000 : Date.now())).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
-              : null;
-            return (
-              <div key={insp.id} onClick={() => onOpenChecklist(insp.id)} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-blue-400 cursor-pointer flex justify-between items-center group shadow-sm transition-all">
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold text-slate-900 text-lg leading-tight">{insp.propertyName || 'Unnamed Property'}</h3>
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${checksCount > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-500'}`}>
-                      {checksCount > 0 ? `${checksCount} checks recorded` : 'Empty Checklist'}
-                    </span>
-                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${isSynced ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                      {isSynced ? <Cloud size={11} /> : <Smartphone size={11} />}
-                      {isSynced ? 'Cloud Synced' : 'Device Only'}
-                    </span>
-                    {insp.verdictScore && (
-                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {insp.verdictScore}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-slate-500 flex-wrap">
-                    <span className="flex items-center gap-1.5"><MapPin size={14} className="text-slate-400" /> {insp.propertyAddress || 'No address'}</span>
-                    <span className="text-slate-300">•</span>
-                    <span className="flex items-center gap-1.5"><Handshake size={14} className="text-slate-400" /> {insp.landlordName || 'No landlord'}</span>
-                    {formattedDate && (
-                      <>
-                        <span className="text-slate-300">•</span>
-                        <span className="text-xs text-slate-400">{formattedDate}</span>
-                      </>
-                    )}
-                  </div>
+      ) : (() => {
+        // Group inspections into building folders
+        const foldersMap = new Map<string, { key: string; name: string; address: string; landlord: string; items: Inspection[] }>();
+        inspections.forEach(insp => {
+          const cleanName = (insp.propertyName || '').trim();
+          const folderKey = insp.propertyId || (cleanName ? `name:${cleanName.toLowerCase()}` : '__unlisted__');
+          if (!foldersMap.has(folderKey)) {
+            foldersMap.set(folderKey, {
+              key: folderKey,
+              name: cleanName || 'Unlisted / Custom Building',
+              address: insp.propertyAddress || insp.neighborhood || '',
+              landlord: insp.landlordName || '',
+              items: [],
+            });
+          }
+          const group = foldersMap.get(folderKey)!;
+          if (!group.address && (insp.propertyAddress || insp.neighborhood)) {
+            group.address = insp.propertyAddress || insp.neighborhood || '';
+          }
+          if (!group.landlord && insp.landlordName) {
+            group.landlord = insp.landlordName;
+          }
+          group.items.push(insp);
+        });
+        const folders = Array.from(foldersMap.values());
+        const toggleFolder = (key: string) =>
+          setOpenFolders(prev => ({ ...prev, [key]: !(prev[key] ?? folders.length === 1) }));
+
+        return (
+          <div className="space-y-3">
+            {folders.map(folder => {
+              const isOpen = openFolders[folder.key] ?? folders.length === 1;
+              const syncedCount = folder.items.filter(i => supabaseSyncedIds.has(i.id)).length;
+              return (
+                <div key={folder.key} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleFolder(folder.key)}
+                    className="w-full p-4 flex items-center justify-between gap-3 text-left hover:bg-slate-50/80 transition-colors"
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${isOpen ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600'}`}>
+                        {isOpen ? <FolderOpen size={20} /> : <Folder size={20} />}
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-bold text-slate-900 text-base leading-tight truncate">{folder.name}</h3>
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+                            {folder.items.length} {folder.items.length === 1 ? 'unit' : 'units'}
+                          </span>
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 ${syncedCount === folder.items.length ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                            {syncedCount === folder.items.length ? <Cloud size={10} /> : <Smartphone size={10} />}
+                            {syncedCount === folder.items.length ? 'Synced' : `${syncedCount}/${folder.items.length} Synced`}
+                          </span>
+                        </div>
+                        {(folder.address || folder.landlord) && (
+                          <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
+                            {folder.address && <span className="flex items-center gap-1"><MapPin size={12} className="text-slate-400" /> {folder.address}</span>}
+                            {folder.address && folder.landlord && <span className="text-slate-300">•</span>}
+                            {folder.landlord && <span className="flex items-center gap-1"><Handshake size={12} className="text-slate-400" /> {folder.landlord}</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-slate-400 shrink-0">
+                      {isOpen ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t border-slate-100 bg-slate-50/50 p-3 space-y-2">
+                      {folder.items.map(insp => {
+                        const checksCount = Object.keys(insp.checklistData || {}).length;
+                        const isSynced = supabaseSyncedIds.has(insp.id);
+                        const formattedDate = insp.updatedAt 
+                          ? new Date(typeof insp.updatedAt === 'number' ? insp.updatedAt : (insp.updatedAt?.seconds ? insp.updatedAt.seconds * 1000 : Date.now())).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          : null;
+                        return (
+                          <div 
+                            key={insp.id} 
+                            onClick={() => onOpenChecklist(insp.id)} 
+                            className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-blue-400 cursor-pointer flex justify-between items-center group shadow-xs transition-all"
+                          >
+                            <div className="space-y-1.5 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-slate-800 text-sm">
+                                  {insp.unitFloor || insp.propertyName || 'Unit Inspection'}
+                                </span>
+                                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${checksCount > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-500'}`}>
+                                  {checksCount > 0 ? `${checksCount} checks` : 'Empty'}
+                                </span>
+                                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${isSynced ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                                  {isSynced ? <Cloud size={10} /> : <Smartphone size={10} />}
+                                  {isSynced ? 'Cloud' : 'Device'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
+                                {insp.verdictScore && (
+                                  <span className="text-emerald-700 font-medium">{insp.verdictScore}</span>
+                                )}
+                                {insp.verdictScore && formattedDate && <span className="text-slate-300">•</span>}
+                                {formattedDate && <span className="text-slate-400">{formattedDate}</span>}
+                              </div>
+                            </div>
+                            <ChevronLeft size={18} className="text-slate-300 rotate-180 group-hover:text-blue-500 transition-transform shrink-0 ml-2" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <ChevronLeft size={20} className="text-slate-300 rotate-180 group-hover:text-blue-500 transition-transform shrink-0 ml-2" />
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {showBackupModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -688,6 +761,25 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
   // Draft auto-save tracking
   const [currentDraftId, setCurrentDraftId] = useState<string>(inspectionId || crypto.randomUUID());
   const [autoSavedTime, setAutoSavedTime] = useState<string | null>(null);
+
+  // Collapsible sections state
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    s0: true,
+    s1: true,
+    s2: false,
+    s3: false,
+    s4: false,
+    s5: false,
+    s6: false,
+    s7: false,
+    s8: false,
+  });
+  const toggleSection = (secId: string) =>
+    setExpandedSections(prev => ({ ...prev, [secId]: !prev[secId] }));
+  const setAllSectionsExpanded = (open: boolean) =>
+    setExpandedSections({
+      s0: open, s1: open, s2: open, s3: open, s4: open, s5: open, s6: open, s7: open, s8: open,
+    });
 
   useEffect(() => {
     async function loadData() {
@@ -1043,8 +1135,57 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
           </div>
         )}
 
+        {/* Section Collapse Controls */}
+        <div className="flex items-center justify-between bg-slate-100/80 px-3.5 py-2 rounded-xl border border-slate-200/80 text-xs">
+          <span className="font-medium text-slate-600">Tap any section header to expand or collapse</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setAllSectionsExpanded(true)}
+              className="text-blue-600 hover:text-blue-700 font-semibold px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+            >
+              Expand All
+            </button>
+            <span className="text-slate-300">|</span>
+            <button
+              type="button"
+              onClick={() => setAllSectionsExpanded(false)}
+              className="text-slate-600 hover:text-slate-800 font-semibold px-2 py-1 rounded hover:bg-slate-200/60 transition-colors"
+            >
+              Collapse All
+            </button>
+          </div>
+        </div>
+
         {/* --- HEADER: PROPERTY INFO --- */}
-        <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-5 space-y-4">
+        <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('s0')}
+            className="w-full px-5 py-4 bg-slate-50/50 flex items-center justify-between gap-3 text-left hover:bg-slate-100/60 transition-colors"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <Building className="text-blue-600 shrink-0" size={20} />
+              <div className="min-w-0">
+                <h2 className="font-semibold text-base sm:text-lg text-slate-800">0. Building & Unit Details</h2>
+                {!expandedSections.s0 && (propertyName || unitFloor) && (
+                  <p className="text-xs text-slate-500 truncate">
+                    {[propertyName, unitFloor].filter(Boolean).join(' • ')}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {(propertyName || selectedPropertyId) && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Set
+                </span>
+              )}
+              {expandedSections.s0 ? <ChevronDown size={20} className="text-slate-400" /> : <ChevronRight size={20} className="text-slate-400" />}
+            </div>
+          </button>
+          {expandedSections.s0 && (
+          <div className="p-5 space-y-4 border-t border-slate-100">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Select Property</label>
             <div className="flex gap-2">
@@ -1102,10 +1243,12 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
               </div>
             </div>
           </div>
+          </div>
+          )}
         </section>
 
         {/* --- SECTION 1 --- */}
-        <Section title="1. The TryViet Core Checks" icon={<ShieldAlert className="text-red-500" size={20} />} sectionId="s1" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+        <Section title="1. The TryViet Core Checks" icon={<ShieldAlert className="text-red-500" size={20} />} sectionId="s1" isOpen={!!expandedSections.s1} onToggle={() => toggleSection('s1')} ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
           <EditableCheckItem id="c1_1" label="Mold & Moisture Check (Smell test)" ctx={ctx} />
           <EditableCheckItem id="c1_2" label="Inside kitchen cabinets (under sink)" ctx={ctx} />
           <EditableCheckItem id="c1_3" label="Bathroom ceiling and corners" ctx={ctx} />
@@ -1180,7 +1323,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         </Section>
 
         {/* --- SECTION 2 --- */}
-        <Section title="2. Workspace Setup" icon={<Laptop className="text-blue-500" size={20} />} sectionId="s2" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+        <Section title="2. Workspace Setup" icon={<Laptop className="text-blue-500" size={20} />} sectionId="s2" isOpen={!!expandedSections.s2} onToggle={() => toggleSection('s2')} ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
           <EditableCheckItem id="c2_1" label="Dedicated desk with good height and stability" ctx={ctx} />
           <EditableCheckItem id="c2_2" label="Ergonomic / actual office chair (not hard wooden)" ctx={ctx} />
           
@@ -1205,7 +1348,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         </Section>
 
         {/* --- SECTION 3 --- */}
-        <Section title="3. Kitchen & Drinking Water" icon={<Coffee className="text-amber-600" size={20} />} sectionId="s3" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+        <Section title="3. Kitchen & Drinking Water" icon={<Coffee className="text-amber-600" size={20} />} sectionId="s3" isOpen={!!expandedSections.s3} onToggle={() => toggleSection('s3')} ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
           <FieldWrapper id="c3_water_box" ctx={ctx} label="Drinking Water Section">
             <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
               <BoxHeader id="c3_water_lbl" label="Drinking Water Handling" ctx={ctx} />
@@ -1246,7 +1389,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         </Section>
 
         {/* --- SECTION 4 --- */}
-        <Section title="4. Bathroom & Laundry" icon={<ShowerHead className="text-teal-500" size={20} />} sectionId="s4" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+        <Section title="4. Bathroom & Laundry" icon={<ShowerHead className="text-teal-500" size={20} />} sectionId="s4" isOpen={!!expandedSections.s4} onToggle={() => toggleSection('s4')} ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
           <FieldWrapper id="c4_layout_box" ctx={ctx} label="Shower Separation & Layout">
             <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
               <BoxHeader id="c4_layout_lbl" label="Bathroom Layout & Shower Separation" ctx={ctx} />
@@ -1280,7 +1423,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         </Section>
 
         {/* --- SECTION 5 --- */}
-        <Section title="5. General Comfort & Lighting" icon={<Sun className="text-orange-400" size={20} />} sectionId="s5" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+        <Section title="5. General Comfort & Lighting" icon={<Sun className="text-orange-400" size={20} />} sectionId="s5" isOpen={!!expandedSections.s5} onToggle={() => toggleSection('s5')} ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
           <FieldWrapper id="c5_ac_box" ctx={ctx} label="AC Coverage">
             <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
               <BoxHeader id="c5_ac_lbl" label="Air Conditioning Coverage" ctx={ctx} />
@@ -1310,7 +1453,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         </Section>
 
         {/* --- SECTION 6 --- */}
-        <Section title="6. Building Facilities & Security" icon={<Building2 className="text-purple-500" size={20} />} sectionId="s6" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+        <Section title="6. Building Facilities & Security" icon={<Building2 className="text-purple-500" size={20} />} sectionId="s6" isOpen={!!expandedSections.s6} onToggle={() => toggleSection('s6')} ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
           <FieldWrapper id="c6_flood_box" ctx={ctx} label="Street Flooding Risk">
             <div className="bg-slate-100/50 p-4 rounded-xl space-y-3 mb-4 border border-slate-200/60">
               <BoxHeader id="c6_flood_lbl" label="Street Flooding Risk (Heavy Rain & Typhoons)" ctx={ctx} />
@@ -1340,7 +1483,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         </Section>
 
         {/* --- SECTION 7 --- */}
-        <Section title="7. Landlord & Financial Terms" icon={<Handshake className="text-emerald-500" size={20} />} sectionId="s7" ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
+        <Section title="7. Landlord & Financial Terms" icon={<Handshake className="text-emerald-500" size={20} />} sectionId="s7" isOpen={!!expandedSections.s7} onToggle={() => toggleSection('s7')} ctx={ctx} customFields={customFields} setCustomFields={setCustomFields} images={images} setImages={setImages} handleImageUpload={handleImageUpload}>
           <EditableCheckItem id="c7_police_reg" label="Foreigner Police Registration: Landlord confirms immediate online police registration (Khai báo tạm trú - mandatory for visa extensions)" ctx={ctx} />
 
           <FieldWrapper id="c7_trust_box" ctx={ctx} label="Deposit Return Track Record">
@@ -1411,18 +1554,30 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         </Section>
 
         {/* --- SECTION 8: INSPECTOR SUMMARY & VERDICT --- */}
-        <section className="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-2xl p-6 shadow-md border border-slate-800 space-y-5">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30">
-              <ShieldCheck size={24} />
+        <section className="bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-2xl shadow-md border border-slate-800 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('s8')}
+            className="w-full p-5 sm:p-6 flex items-center justify-between gap-3 text-left hover:bg-white/5 transition-colors"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30 shrink-0">
+                <ShieldCheck size={24} />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-bold text-base sm:text-lg text-white">8. Inspector Summary & TryViet Verdict</h3>
+                <p className="text-xs text-slate-300 truncate">
+                  {expandedSections.s8 ? 'Liability Shield & Client Trust Artifact' : (verdictScore || 'Tap to set verdict & honest catch')}
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-lg text-white">8. Inspector Summary & TryViet Verdict</h3>
-              <p className="text-xs text-slate-300">Liability Shield & Client Trust Artifact</p>
+            <div className="text-slate-300 shrink-0">
+              {expandedSections.s8 ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
             </div>
-          </div>
+          </button>
 
-          <div className="space-y-4 pt-1">
+          {expandedSections.s8 && (
+          <div className="px-5 pb-6 sm:px-6 space-y-4 pt-1 border-t border-slate-800/80">
             {/* Overall Verdict */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">Overall TryViet Score</label>
@@ -1499,6 +1654,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
               />
             </div>
           </div>
+          )}
         </section>
 
         <div className="pt-4 pb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -1571,10 +1727,18 @@ function BoxHeader({ id, label, ctx, className = "font-medium text-sm text-slate
   );
 }
 
-function Section({ title, icon, sectionId, ctx, customFields, setCustomFields, images, setImages, handleImageUpload, children }: any) {
-  const { editMode } = ctx;
+function Section({ title, icon, sectionId, isOpen = true, onToggle, ctx, customFields, setCustomFields, images, setImages, handleImageUpload, children }: any) {
+  const { editMode, state } = ctx;
   const myCustomFields = customFields.filter((f: any) => f.sectionId === sectionId);
   const myImages = images.filter((img: any) => img.sectionId === sectionId);
+
+  // Count recorded checks/values in this section (sectionId e.g. "s1" -> prefix "c1_")
+  const sectionPrefix = `c${sectionId.replace(/^s/, '')}_`;
+  const customFieldIds = new Set(myCustomFields.map((f: any) => f.id));
+  const answeredCount = Object.entries(state || {}).filter(([k, v]) => {
+    const belongs = k.startsWith(sectionPrefix) || customFieldIds.has(k);
+    return belongs && v !== undefined && v !== null && v !== '' && v !== false;
+  }).length;
 
   const addCustomField = (type: 'check' | 'text' | 'number') => {
     setCustomFields([...customFields, { id: `custom_${Date.now()}`, sectionId, type, label: 'New Custom Field' }]);
@@ -1588,11 +1752,31 @@ function Section({ title, icon, sectionId, ctx, customFields, setCustomFields, i
 
   return (
     <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative">
-      <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
-        {icon}
-        <h2 className="font-semibold text-lg text-slate-800">{title}</h2>
-      </div>
-      <div className="p-5 space-y-4">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full px-5 py-4 bg-slate-50/50 flex items-center justify-between gap-3 text-left hover:bg-slate-100/70 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="shrink-0">{icon}</span>
+          <h2 className="font-semibold text-base sm:text-lg text-slate-800 truncate">{title}</h2>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {answeredCount > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+              {answeredCount} checked
+            </span>
+          )}
+          {myImages.length > 0 && (
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+              {myImages.length} 📷
+            </span>
+          )}
+          {isOpen ? <ChevronDown size={20} className="text-slate-400" /> : <ChevronRight size={20} className="text-slate-400" />}
+        </div>
+      </button>
+      {isOpen && (
+      <div className="p-5 space-y-4 border-t border-slate-100">
         {children}
 
         {/* Render Custom Fields */}
@@ -1632,6 +1816,7 @@ function Section({ title, icon, sectionId, ctx, customFields, setCustomFields, i
         </div>
 
       </div>
+      )}
     </section>
   );
 }
