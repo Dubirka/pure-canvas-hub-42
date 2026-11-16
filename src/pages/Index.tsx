@@ -365,9 +365,44 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
     setTimeout(() => setCopiedBackup(false), 2500);
   };
 
+  // Find any active unsaved draft
+  const activeDraftRaw = localStorage.getItem(`tryviet_active_draft_${user.uid}`);
+  let activeDraftItem: Inspection | null = null;
+  try {
+    if (activeDraftRaw) {
+      activeDraftItem = mapRowToInspection(JSON.parse(activeDraftRaw));
+    }
+  } catch {}
+
+  const activeDraftChecks = activeDraftItem ? Object.keys(activeDraftItem.checklistData || {}).length : 0;
+  const isDraftAlreadyInList = activeDraftItem && inspections.some(x => x.id === activeDraftItem?.id && Object.keys(x.checklistData || {}).length >= activeDraftChecks);
+  const showDraftBanner = activeDraftItem && activeDraftChecks > 0 && !isDraftAlreadyInList;
+
   return (
-    <main className="max-w-3xl mx-auto p-4 mt-4">
-      <div className="flex items-center justify-between mb-6">
+    <main className="max-w-3xl mx-auto p-4 mt-4 space-y-4">
+      {showDraftBanner && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-100 text-amber-700 rounded-xl">
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-amber-900">Unsaved Inspection Draft Recovered</h4>
+              <p className="text-xs text-amber-700">
+                Found draft for <strong>{activeDraftItem?.propertyName || 'Unlisted Property'}</strong> with <strong>{activeDraftChecks}</strong> checks answered.
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => onOpenChecklist(activeDraftItem!.id)}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs px-3.5 py-2 rounded-xl shrink-0 shadow-sm transition-colors"
+          >
+            Resume Inspection
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Your Inspections</h2>
           <p className="text-xs text-slate-500">
@@ -398,19 +433,46 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         </div>
       ) : (
         <div className="grid gap-3">
-          {inspections.map(insp => (
-            <div key={insp.id} onClick={() => onOpenChecklist(insp.id)} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-blue-400 cursor-pointer flex justify-between items-center group shadow-sm transition-all">
-              <div>
-                <h3 className="font-semibold text-slate-900 text-lg leading-tight">{insp.propertyName || 'Unnamed Property'}</h3>
-                <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
-                  <span className="flex items-center gap-1.5"><MapPin size={14} className="text-slate-400" /> {insp.propertyAddress || 'No address'}</span>
-                  <span className="text-slate-300">•</span>
-                  <span className="flex items-center gap-1.5"><Handshake size={14} className="text-slate-400" /> {insp.landlordName || 'No landlord'}</span>
+          {inspections.map(insp => {
+            const checksCount = Object.keys(insp.checklistData || {}).length;
+            const formattedDate = insp.updatedAt 
+              ? new Date(typeof insp.updatedAt === 'number' ? insp.updatedAt : (insp.updatedAt?.seconds ? insp.updatedAt.seconds * 1000 : Date.now())).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              : null;
+            return (
+              <div key={insp.id} onClick={() => onOpenChecklist(insp.id)} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-blue-400 cursor-pointer flex justify-between items-center group shadow-sm transition-all">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-semibold text-slate-900 text-lg leading-tight">{insp.propertyName || 'Unnamed Property'}</h3>
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${checksCount > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-500'}`}>
+                      {checksCount > 0 ? `${checksCount} checks recorded` : 'Empty Checklist'}
+                    </span>
+                    {insp.verdictScore && (
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        {insp.verdictScore}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-slate-500 flex-wrap">
+                    <span className="flex items-center gap-1.5"><MapPin size={14} className="text-slate-400" /> {insp.propertyAddress || 'No address'}</span>
+                    <span className="text-slate-300">•</span>
+                    <span className="flex items-center gap-1.5"><Handshake size={14} className="text-slate-400" /> {insp.landlordName || 'No landlord'}</span>
+                    {formattedDate && (
+                      <>
+                        <span className="text-slate-300">•</span>
+                        <span className="text-xs text-slate-400">{formattedDate}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
+                <ChevronLeft size={20} className="text-slate-300 rotate-180 group-hover:text-blue-500 transition-transform shrink-0 ml-2" />
               </div>
-              <ChevronLeft size={20} className="text-slate-300 rotate-180 group-hover:text-blue-500 transition-transform" />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -486,6 +548,10 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
   const [hiddenFields, setHiddenFields] = useState<string[]>([]);
   const [labelOverrides, setLabelOverrides] = useState<Record<string, string>>({});
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
+
+  // Draft auto-save tracking
+  const [currentDraftId, setCurrentDraftId] = useState<string>(inspectionId || crypto.randomUUID());
+  const [autoSavedTime, setAutoSavedTime] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -586,6 +652,70 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
     }
     loadData();
   }, [inspectionId, user.uid]);
+
+  // Continuous real-time local auto-save
+  useEffect(() => {
+    if (loading) return;
+    const hasData = propertyName || Object.keys(state).length > 0 || Object.keys(notes).length > 0 || images.length > 0;
+    if (!hasData) return;
+
+    const timeout = setTimeout(() => {
+      try {
+        const id = inspectionId || currentDraftId;
+        const currentDraft: Inspection = {
+          id,
+          userId: user.uid,
+          propertyId: selectedPropertyId,
+          propertyName: propertyName || 'Draft Inspection',
+          propertyAddress,
+          neighborhood,
+          unitFloor,
+          mapsUrl,
+          videoUrl,
+          landlordName,
+          landlordPhone,
+          landlordZalo,
+          verdictScore,
+          verdictBestFor,
+          verdictCatch,
+          checklistData: state,
+          notes,
+          images,
+          hiddenFields,
+          labelOverrides,
+          customFields,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+
+        const key = `inspections_${user.uid}`;
+        const localList: any[] = JSON.parse(localStorage.getItem(key) || '[]');
+        const idx = localList.findIndex((x: any) => x.id === id);
+        if (idx >= 0) localList[idx] = currentDraft;
+        else localList.push(currentDraft);
+
+        try {
+          localStorage.setItem(key, JSON.stringify(localList));
+        } catch (qErr) {
+          const noImgs = localList.map(item => ({ ...item, images: [] }));
+          localStorage.setItem(key, JSON.stringify(noImgs));
+        }
+
+        // Also save to active draft key
+        localStorage.setItem(`tryviet_active_draft_${user.uid}`, JSON.stringify(currentDraft));
+        setAutoSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } catch (err) {
+        console.warn("Auto-save error:", err);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [
+    state, notes, images, propertyName, propertyAddress, neighborhood, 
+    unitFloor, mapsUrl, videoUrl, landlordName, landlordPhone, landlordZalo, 
+    verdictScore, verdictBestFor, verdictCatch, hiddenFields, labelOverrides, 
+    customFields, selectedPropertyId, inspectionId, currentDraftId, user.uid, loading
+  ]);
 
   const handlePropertySelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const pId = e.target.value;
@@ -741,7 +871,14 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-2">
            <div>
              <h2 className="text-2xl font-bold text-slate-900">Inspection Details</h2>
-             <p className="text-xs text-slate-500">Da Nang Vetted Apartment Checklist</p>
+             <div className="flex items-center gap-2">
+               <p className="text-xs text-slate-500">Da Nang Vetted Apartment Checklist</p>
+               {autoSavedTime && (
+                 <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                   <CheckCircle2 size={11} className="text-emerald-500" /> Auto-saved {autoSavedTime}
+                 </span>
+               )}
+             </div>
            </div>
            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
              <button 
