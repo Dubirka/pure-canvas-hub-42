@@ -5,7 +5,6 @@ import {
 import { db } from '../firebase';
 import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable/index';
-import { LovableMark } from '@lovable.dev/cloud-auth-js/react';
 import { collection, query, where, getDocs, doc, setDoc, getDoc, Timestamp, addDoc } from 'firebase/firestore';
 import { compressImage } from '../imageUtils';
 import { 
@@ -207,9 +206,9 @@ function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
     } finally { setLoading(false); }
   };
 
-  const handleOAuth = async (provider: 'google' | 'lovable') => {
+  const handleGoogleSignIn = async () => {
     setErrorMessage(null);
-    const result = await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
+    const result = await lovable.auth.signInWithOAuth('google', { redirect_uri: window.location.origin });
     if (result.error) setErrorMessage(result.error.message || 'Sign-in failed.');
   };
 
@@ -231,11 +230,8 @@ function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
       {info && <div className="mb-5 p-3.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-xs text-left">{info}</div>}
 
       <div className="space-y-3">
-        <button type="button" onClick={() => handleOAuth('google')} className={providerBtn} style={{ background: '#FFFFFF', border: '1px solid #747775', color: '#1F1F1F' }}>
+        <button type="button" onClick={handleGoogleSignIn} className={providerBtn} style={{ background: '#FFFFFF', border: '1px solid #747775', color: '#1F1F1F' }}>
           <GoogleLogo /> Continue with Google
-        </button>
-        <button type="button" onClick={() => handleOAuth('lovable')} className={`${providerBtn} bg-white border border-slate-300 text-slate-800 hover:bg-slate-50`}>
-          <LovableMark className="h-[18px] w-[18px]" /> Continue with Lovable
         </button>
 
         <div className="relative flex py-2 items-center">
