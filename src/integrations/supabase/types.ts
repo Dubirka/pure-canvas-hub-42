@@ -102,6 +102,7 @@ export type Database = {
           landlord_zalo: string | null
           name: string
           neighborhood: string | null
+          user_id: string | null
         }
         Insert: {
           address?: string | null
@@ -112,6 +113,7 @@ export type Database = {
           landlord_zalo?: string | null
           name: string
           neighborhood?: string | null
+          user_id?: string | null
         }
         Update: {
           address?: string | null
@@ -122,6 +124,7 @@ export type Database = {
           landlord_zalo?: string | null
           name?: string
           neighborhood?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
