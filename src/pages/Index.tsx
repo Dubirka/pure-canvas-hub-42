@@ -1,6 +1,6 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
 import { 
-  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle
+  CheckCircle2, Circle, ShieldAlert, Laptop, Coffee, ShowerHead, Sun, Building2, Handshake, Building, LogOut, Plus, FileText, ChevronLeft, Save, Loader2, MapPin, Camera, Trash2, Edit3, X, EyeOff, Eye, MessageSquare, Share2, ShieldCheck, AlertTriangle, Download, Copy, Check
 } from 'lucide-react';
 import { auth, db, signInWithGoogle, logout } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -11,7 +11,8 @@ import {
   fetchInspectionByIdFromSupabase, 
   saveInspectionToSupabase, 
   fetchPropertiesFromSupabase, 
-  savePropertyToSupabase 
+  savePropertyToSupabase,
+  mapRowToInspection
 } from '../services/supabaseStorage';
 import ClientShareReportModal from '../components/ClientShareReportModal';
 import PWAInstallBanner from '../components/PWAInstallBanner';
@@ -244,23 +245,40 @@ function getAllLocalInspections(userUid: string): Inspection[] {
   const map = new Map<string, Inspection>();
   try {
     // 1. Direct user key
-    const direct: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${userUid}`) || '[]');
-    if (Array.isArray(direct)) {
-      direct.forEach(item => { if (item && item.id) map.set(item.id, item); });
+    const directRaw = localStorage.getItem(`inspections_${userUid}`);
+    if (directRaw) {
+      try {
+        const direct = JSON.parse(directRaw);
+        if (Array.isArray(direct)) {
+          direct.forEach(item => {
+            if (item && item.id) {
+              map.set(item.id, mapRowToInspection(item));
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("Could not parse direct user inspections:", e);
+      }
     }
 
-    // 2. Scan all localStorage keys starting with 'inspections' (e.g. inspections_guest_inspector)
+    // 2. Scan all localStorage keys starting with 'inspections' or 'inspection'
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && (key.startsWith('inspections') || key === 'inspections')) {
+      if (key && (key.startsWith('inspections') || key === 'inspections' || key.startsWith('tryviet_inspections') || key.startsWith('inspection_'))) {
         try {
-          const list: Inspection[] = JSON.parse(localStorage.getItem(key) || '[]');
-          if (Array.isArray(list)) {
-            list.forEach(item => {
+          const raw = localStorage.getItem(key);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach(item => {
               if (item && item.id && !map.has(item.id)) {
-                map.set(item.id, item);
+                map.set(item.id, mapRowToInspection(item));
               }
             });
+          } else if (parsed && typeof parsed === 'object' && parsed.id) {
+            if (!map.has(parsed.id)) {
+              map.set(parsed.id, mapRowToInspection(parsed));
+            }
           }
         } catch {
           // ignore parsing error
@@ -276,6 +294,8 @@ function getAllLocalInspections(userUid: string): Inspection[] {
 function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenChecklist: (id: string | null) => void }) {
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [copiedBackup, setCopiedBackup] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -288,7 +308,7 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         try {
           const q = query(collection(db, 'inspections'), where("userId", "==", user.uid));
           const snapshot = await getDocs(q);
-          snapshot.forEach(docSnap => firestoreList.push({ id: docSnap.id, ...docSnap.data() } as Inspection));
+          snapshot.forEach(docSnap => firestoreList.push(mapRowToInspection({ id: docSnap.id, ...docSnap.data() })));
         } catch (e) {
           console.warn("Firestore unavailable, checking local & Supabase:", e);
         }
@@ -302,7 +322,12 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
             const existing = mergedMap.get(item.id);
             const itemTime = typeof item.updatedAt === 'object' && item.updatedAt?.seconds ? item.updatedAt.seconds * 1000 : Number(item.updatedAt || 0);
             const existingTime = existing ? (typeof existing.updatedAt === 'object' && existing.updatedAt?.seconds ? existing.updatedAt.seconds * 1000 : Number(existing.updatedAt || 0)) : -1;
-            if (!existing || itemTime >= existingTime) {
+            
+            // Prefer whichever has more checklist answers if timestamps are identical
+            const itemChecks = Object.keys(item.checklistData || {}).length;
+            const existingChecks = existing ? Object.keys(existing.checklistData || {}).length : 0;
+
+            if (!existing || itemTime > existingTime || (itemTime === existingTime && itemChecks >= existingChecks)) {
               mergedMap.set(item.id, item);
             }
           }
@@ -326,21 +351,43 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         }
       } catch (err) {
         console.warn("Error loading inspections, falling back to local:", err);
-        const local: Inspection[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
+        const local: Inspection[] = getAllLocalInspections(user.uid);
         setInspections(local);
       } finally { setLoading(false); }
     }
     load();
   }, [user]);
 
+  const handleCopyBackup = () => {
+    const rawData = JSON.stringify(inspections, null, 2);
+    navigator.clipboard.writeText(rawData);
+    setCopiedBackup(true);
+    setTimeout(() => setCopiedBackup(false), 2500);
+  };
 
   return (
     <main className="max-w-3xl mx-auto p-4 mt-4">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-slate-800">Your Inspections</h2>
-        <button onClick={() => onOpenChecklist(null)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm">
-          <Plus size={16} /> New
-        </button>
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Your Inspections</h2>
+          <p className="text-xs text-slate-500">
+            {user.isAnonymous ? 'Guest Inspector Mode (Saved locally on this device)' : `Signed in as ${user.email || user.displayName}`}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {inspections.length > 0 && (
+            <button 
+              onClick={() => setShowBackupModal(true)}
+              title="View or copy raw backup of saved inspections"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 px-3 rounded-lg flex items-center gap-1.5 transition-colors border border-slate-200"
+            >
+              <Download size={14} /> Backup
+            </button>
+          )}
+          <button onClick={() => onOpenChecklist(null)} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm">
+            <Plus size={16} /> New
+          </button>
+        </div>
       </div>
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="animate-spin text-blue-600" size={32} /></div>
@@ -364,6 +411,39 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
               <ChevronLeft size={20} className="text-slate-300 rotate-180 group-hover:text-blue-500 transition-transform" />
             </div>
           ))}
+        </div>
+      )}
+
+      {showBackupModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
+            <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="font-bold text-base text-slate-800">Saved Inspections Backup</h3>
+                <p className="text-xs text-slate-500">Directly stored in your browser storage</p>
+              </div>
+              <button onClick={() => setShowBackupModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-slate-600">
+                You currently have <strong>{inspections.length}</strong> inspection(s) saved on this device. You can copy the raw JSON backup anytime to ensure no data is ever lost.
+              </p>
+              <textarea 
+                readOnly 
+                value={JSON.stringify(inspections, null, 2)} 
+                className="w-full h-48 bg-slate-50 border border-slate-200 rounded-xl p-3 font-mono text-[11px] text-slate-700 outline-none select-all"
+              />
+              <div className="flex justify-end gap-2">
+                <button 
+                  onClick={handleCopyBackup}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-xl text-sm flex items-center gap-1.5 transition-colors"
+                >
+                  {copiedBackup ? <Check size={16} /> : <Copy size={16} />}
+                  {copiedBackup ? 'Copied to Clipboard!' : 'Copy Raw Backup'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </main>
@@ -433,30 +513,51 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         if (inspectionId) {
           let loadedData: Inspection | null = null;
           
-          // 1. Try Supabase backend (Lovable Cloud)
+          // 1. Get local inspections first (offline-first & guest priority)
+          const localList: Inspection[] = getAllLocalInspections(user.uid);
+          const localData = localList.find(x => x.id === inspectionId) || null;
+
+          // 2. Try Supabase backend (Lovable Cloud)
           try {
-            loadedData = await fetchInspectionByIdFromSupabase(inspectionId);
+            const sbData = await fetchInspectionByIdFromSupabase(inspectionId);
+            if (sbData) {
+              loadedData = sbData;
+            }
           } catch (e) {
             console.warn("Supabase inspection load failed:", e);
           }
 
-          // 2. Try Firestore
+          // 3. Try Firestore if not loaded
           if (!loadedData) {
             try {
               const docRef = doc(db, 'inspections', inspectionId);
               const docSnap = await getDoc(docRef);
               if (docSnap.exists()) {
-                loadedData = { id: docSnap.id, ...docSnap.data() } as Inspection;
+                loadedData = mapRowToInspection({ id: docSnap.id, ...docSnap.data() });
               }
             } catch (e) {
               console.warn("Firestore inspection load failed, falling back to local:", e);
             }
           }
 
-          // 3. Fallback to localStorage
-          if (!loadedData) {
-            const localList: Inspection[] = getAllLocalInspections(user.uid);
-            loadedData = localList.find(x => x.id === inspectionId) || null;
+          // 4. Merge local with remote:
+          // If we have local data, use it! If remote also returned data, prefer whichever has actual checklist answers.
+          if (localData) {
+            if (!loadedData) {
+              loadedData = localData;
+            } else {
+              const localChecks = Object.keys(localData.checklistData || {}).length;
+              const remoteChecks = Object.keys(loadedData.checklistData || {}).length;
+              if (localChecks >= remoteChecks) {
+                loadedData = {
+                  ...loadedData,
+                  ...localData,
+                  checklistData: { ...loadedData.checklistData, ...localData.checklistData },
+                  notes: { ...loadedData.notes, ...localData.notes },
+                  images: (localData.images && localData.images.length > 0) ? localData.images : loadedData.images,
+                };
+              }
+            }
           }
 
           if (loadedData) {
@@ -541,7 +642,14 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         const localItem = { id, ...payload, updatedAt: Date.now() };
         if (idx >= 0) localList[idx] = localItem;
         else localList.push(localItem);
-        localStorage.setItem(`inspections_${user.uid}`, JSON.stringify(localList));
+        
+        try {
+          localStorage.setItem(`inspections_${user.uid}`, JSON.stringify(localList));
+        } catch (quotaErr) {
+          console.warn("Storage quota exceeded, saving checklist data without heavy images:", quotaErr);
+          const sanitizedList = localList.map(item => ({ ...item, images: [] }));
+          localStorage.setItem(`inspections_${user.uid}`, JSON.stringify(sanitizedList));
+        }
       } catch (localErr) {
         console.warn("Local storage save error:", localErr);
       }
