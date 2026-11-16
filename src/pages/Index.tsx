@@ -1456,13 +1456,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Neighborhood Area</label>
-              <select value={neighborhood} onChange={e => setNeighborhood(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium text-slate-800">
-                <option value="An Thuong / My Khe">An Thuong / My Khe</option>
-                <option value="Son Tra / My An">Son Tra / My An</option>
-                <option value="Hai Chau (City Center)">Hai Chau (City Center)</option>
-                <option value="Hoi An">Hoi An</option>
-                <option value="Other Da Nang District">Other Da Nang District</option>
-              </select>
+              <NeighborhoodSelect value={neighborhood} onChange={setNeighborhood} />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Unit Number & Floor Level</label>
@@ -2338,6 +2332,110 @@ function SmartInput({ id, placeholder, options, ctx, autoVnd = false }: any) {
   );
 }
 
+const DEFAULT_NEIGHBORHOODS = [
+  'An Thuong / My Khe',
+  'Son Tra / My An',
+  'Hai Chau (City Center)',
+  'Ngu Hanh Son',
+  'Thanh Khe',
+  'Lien Chieu',
+  'Hoi An',
+  'Other Da Nang District',
+];
+
+function NeighborhoodSelect({ value, onChange }: { value: string; onChange: (val: string) => void }) {
+  const [customList, setCustomList] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('tryviet_custom_neighborhoods');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+
+  const allOptions = Array.from(new Set([
+    ...DEFAULT_NEIGHBORHOODS,
+    ...customList,
+    ...(value ? [value] : []),
+  ]));
+
+  const handleAdd = () => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    if (!allOptions.includes(trimmed)) {
+      const next = [...customList, trimmed];
+      setCustomList(next);
+      try {
+        localStorage.setItem('tryviet_custom_neighborhoods', JSON.stringify(next));
+      } catch {}
+    }
+    onChange(trimmed);
+    setNewName('');
+    setAdding(false);
+  };
+
+  if (adding) {
+    return (
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          autoFocus
+          placeholder="e.g. Nam Viet A, Hoa Xuan..."
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
+          className="flex-1 bg-white border border-blue-400 rounded-lg px-3 py-2 text-sm outline-none"
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shrink-0"
+        >
+          Add
+        </button>
+        <button
+          type="button"
+          onClick={() => { setAdding(false); setNewName(''); }}
+          className="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-medium shrink-0"
+        >
+          <X size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-1.5">
+      <select
+        value={value}
+        onChange={e => {
+          if (e.target.value === '__add_new__') {
+            setAdding(true);
+          } else {
+            onChange(e.target.value);
+          }
+        }}
+        className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium text-slate-800"
+      >
+        {allOptions.map(opt => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+        <option value="__add_new__">+ Add new neighborhood...</option>
+      </select>
+      <button
+        type="button"
+        onClick={() => setAdding(true)}
+        title="Add new neighborhood"
+        className="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 shrink-0 flex items-center"
+      >
+        <Plus size={15} />
+      </button>
+    </div>
+  );
+}
+
 function PropertyModal({ userUid, isAnonymous, initialProperty, onClose, onSaved }: { userUid: string, isAnonymous?: boolean, initialProperty?: Property | null, onClose: () => void, onSaved: (p: Property) => void }) {
   const isEdit = Boolean(initialProperty?.id);
   const [loading, setLoading] = useState(false);
@@ -2407,13 +2505,7 @@ function PropertyModal({ userUid, isAnonymous, initialProperty, onClose, onSaved
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Neighborhood</label>
-            <select value={neighborhood} onChange={e=>setNeighborhood(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500">
-              <option value="An Thuong / My Khe">An Thuong / My Khe</option>
-              <option value="Son Tra / My An">Son Tra / My An</option>
-              <option value="Hai Chau (City Center)">Hai Chau (City Center)</option>
-              <option value="Hoi An">Hoi An</option>
-              <option value="Other Da Nang District">Other Da Nang District</option>
-            </select>
+            <NeighborhoodSelect value={neighborhood} onChange={setNeighborhood} />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
