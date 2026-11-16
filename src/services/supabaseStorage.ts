@@ -56,6 +56,8 @@ export function mapRowToInspection(row: any): Inspection {
       userId: '',
       propertyName: '',
       propertyAddress: '',
+      landlordName: '',
+      landlordPhone: '',
       checklistData: {},
       notes: {},
       images: [],
