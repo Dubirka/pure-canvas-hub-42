@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../integrations/supabase/client'
 
 export interface Property {
   id: string;
+  userId?: string;
   name: string;
   address: string;
   neighborhood?: string;
@@ -159,19 +160,15 @@ export function mapInspectionToRow(insp: Partial<Inspection>): any {
 }
 
 export async function fetchInspectionsFromSupabase(userId: string): Promise<Inspection[]> {
+  if (!userId || userId === 'guest_inspector') {
+    return [];
+  }
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from('inspections')
       .select('*')
+      .eq('user_id', userId)
       .order('updated_at', { ascending: false });
-
-    if (userId && userId !== 'guest_inspector') {
-      query = query.or(`user_id.eq.${userId},user_id.eq.guest_inspector`);
-    } else if (userId) {
-      query = query.eq('user_id', userId);
-    }
-
-    const { data, error } = await query;
 
     if (error) {
       console.warn('Supabase fetch inspections error:', error.message);
@@ -255,11 +252,15 @@ export async function deleteInspectionFromSupabase(id: string): Promise<{ succes
   }
 }
 
-export async function fetchPropertiesFromSupabase(): Promise<Property[]> {
+export async function fetchPropertiesFromSupabase(userId?: string): Promise<Property[]> {
+  if (!userId || userId === 'guest_inspector') {
+    return [];
+  }
   try {
     const { data, error } = await supabase
       .from('properties')
       .select('*')
+      .eq('user_id', userId)
       .order('name', { ascending: true });
 
     if (error) {
@@ -269,6 +270,7 @@ export async function fetchPropertiesFromSupabase(): Promise<Property[]> {
 
     return (data || []).map((p: any) => ({
       id: p.id,
+      userId: p.user_id || userId,
       name: p.name,
       address: p.address || '',
       neighborhood: p.neighborhood || '',
@@ -282,12 +284,17 @@ export async function fetchPropertiesFromSupabase(): Promise<Property[]> {
   }
 }
 
-export async function savePropertyToSupabase(property: Property): Promise<{ success: boolean; error?: string }> {
+export async function savePropertyToSupabase(property: Property, userId?: string): Promise<{ success: boolean; error?: string }> {
+  const ownerId = userId || property.userId;
+  if (!ownerId || ownerId === 'guest_inspector') {
+    return { success: false, error: 'Guest mode only saves locally on this device.' };
+  }
   try {
     const { error } = await supabase
       .from('properties')
       .upsert({
         id: property.id,
+        user_id: ownerId,
         name: property.name,
         address: property.address,
         neighborhood: property.neighborhood || null,

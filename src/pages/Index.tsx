@@ -25,6 +25,7 @@ type StateValue = boolean | string;
 
 interface Property {
   id: string;
+  userId?: string;
   name: string;
   address: string;
   neighborhood?: string;
@@ -264,61 +265,60 @@ function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
 function getAllLocalInspections(userUid: string): Inspection[] {
   const map = new Map<string, Inspection>();
   try {
-    // 1. Direct user key
-    const directRaw = localStorage.getItem(`inspections_${userUid}`);
-    if (directRaw) {
+    // Only read inspections scoped to this user's UID
+    const keysToRead = [`inspections_${userUid}`];
+    if (userUid === 'guest_inspector') {
+      keysToRead.push('inspections', 'tryviet_inspections');
+    }
+
+    keysToRead.forEach(key => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
       try {
-        const direct = JSON.parse(directRaw);
-        if (Array.isArray(direct)) {
-          direct.forEach(item => {
-            if (item && item.id) {
-              map.set(item.id, mapRowToInspection(item));
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(item => {
+            if (item && item.id && !map.has(item.id)) {
+              map.set(item.id, mapRowToInspection({ ...item, userId: userUid }));
             }
           });
         }
       } catch (e) {
-        console.warn("Could not parse direct user inspections:", e);
+        console.warn(`Could not parse local inspections (${key}):`, e);
       }
-    }
-
-    // 2. Scan all localStorage keys starting with 'inspections' or 'inspection'
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (key.startsWith('inspections') || key === 'inspections' || key.startsWith('tryviet_inspections') || key.startsWith('inspection_'))) {
-        try {
-          const raw = localStorage.getItem(key);
-          if (!raw) continue;
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            parsed.forEach(item => {
-              if (item && item.id && !map.has(item.id)) {
-                map.set(item.id, mapRowToInspection(item));
-              }
-            });
-          } else if (parsed && typeof parsed === 'object' && parsed.id) {
-            if (!map.has(parsed.id)) {
-              map.set(parsed.id, mapRowToInspection(parsed));
-            }
-          }
-        } catch {
-          // ignore parsing error
-        }
-      }
-    }
+    });
   } catch (e) {
     console.warn("Could not read local inspections:", e);
   }
   return Array.from(map.values());
 }
 
-function removeLocalInspection(id: string) {
+function getLocalProperties(userUid: string): Property[] {
   try {
-    const keysToUpdate: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (key.startsWith('inspections') || key === 'inspections' || key.startsWith('tryviet_inspections') || key.startsWith('inspection_') || key.startsWith('tryviet_active_draft_'))) {
-        keysToUpdate.push(key);
-      }
+    const raw = localStorage.getItem(`properties_${userUid}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalProperties(userUid: string, props: Property[]) {
+  try {
+    localStorage.setItem(`properties_${userUid}`, JSON.stringify(props));
+  } catch (e) {
+    console.warn("Could not cache properties locally:", e);
+  }
+}
+
+function removeLocalInspection(id: string, userUid?: string) {
+  try {
+    const keysToUpdate = userUid
+      ? [`inspections_${userUid}`, `tryviet_active_draft_${userUid}`]
+      : [];
+    if (userUid === 'guest_inspector') {
+      keysToUpdate.push('inspections', 'tryviet_inspections');
     }
     keysToUpdate.forEach(key => {
       try {
@@ -355,37 +355,48 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
   useEffect(() => {
     async function load() {
       try {
-        // 1. Fetch from Supabase backend (Lovable Cloud)
+        // 1. Fetch from Supabase backend (scoped strictly to user.uid)
         const supabaseList = await fetchInspectionsFromSupabase(user.uid);
         const sbIds = new Set(supabaseList.map(s => s.id));
         setSupabaseSyncedIds(sbIds);
 
-        // Fetch saved properties/buildings
+        // Fetch saved properties/buildings for this user + merge with local cache
+        const localProps = getLocalProperties(user.uid);
         try {
-          const sbProps = await fetchPropertiesFromSupabase();
-          if (sbProps.length > 0) {
-            setPropertiesList(sbProps);
-          } else {
-            const propSnap = await getDocs(collection(db, 'properties'));
-            const fbProps: Property[] = [];
-            propSnap.forEach(d => fbProps.push({ id: d.id, ...d.data() } as Property));
-            setPropertiesList(fbProps);
+          const sbProps = user.isAnonymous ? [] : await fetchPropertiesFromSupabase(user.uid);
+          const propsMap = new Map<string, Property>();
+          [...localProps, ...sbProps].forEach(p => {
+            if (p && p.id) propsMap.set(p.id, p);
+          });
+          const mergedProps = Array.from(propsMap.values());
+          setPropertiesList(mergedProps);
+          saveLocalProperties(user.uid, mergedProps);
+
+          // Auto-sync any local-only properties when signed in
+          if (!user.isAnonymous) {
+            const sbPropIds = new Set(sbProps.map(p => p.id));
+            localProps.filter(lp => lp.id && !sbPropIds.has(lp.id)).forEach(lp => {
+              savePropertyToSupabase({ ...lp, userId: user.uid }, user.uid).catch(() => {});
+            });
           }
         } catch (e) {
           console.warn("Could not load properties list:", e);
+          setPropertiesList(localProps);
         }
 
-        // 2. Fetch from Firestore (Firebase)
+        // 2. Fetch from Firestore (only when signed in, never for Guest)
         let firestoreList: Inspection[] = [];
-        try {
-          const q = query(collection(db, 'inspections'), where("userId", "==", user.uid));
-          const snapshot = await getDocs(q);
-          snapshot.forEach(docSnap => firestoreList.push(mapRowToInspection({ id: docSnap.id, ...docSnap.data() })));
-        } catch (e) {
-          console.warn("Firestore unavailable, checking local & Supabase:", e);
+        if (!user.isAnonymous) {
+          try {
+            const q = query(collection(db, 'inspections'), where("userId", "==", user.uid));
+            const snapshot = await getDocs(q);
+            snapshot.forEach(docSnap => firestoreList.push(mapRowToInspection({ id: docSnap.id, ...docSnap.data() })));
+          } catch (e) {
+            console.warn("Firestore unavailable, checking local & Supabase:", e);
+          }
         }
         
-        // 3. Merge with all local storage inspections (including guest or previous sessions)
+        // 3. Merge with local storage inspections strictly belonging to user.uid
         const local: Inspection[] = getAllLocalInspections(user.uid);
         
         const mergedMap = new Map<string, Inspection>();
@@ -400,7 +411,7 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
             const existingChecks = existing ? Object.keys(existing.checklistData || {}).length : 0;
 
             if (!existing || itemTime > existingTime || (itemTime === existingTime && itemChecks >= existingChecks)) {
-              mergedMap.set(item.id, item);
+              mergedMap.set(item.id, { ...item, userId: user.uid });
             }
           }
         });
@@ -413,20 +424,22 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         });
         setInspections(merged);
 
-        // Auto-sync existing locally stored inspections to Supabase backend in the background
-        const unsyncedLocals = local.filter(loc => loc.id && !sbIds.has(loc.id));
-        if (unsyncedLocals.length > 0) {
-          Promise.allSettled(unsyncedLocals.map(loc => saveInspectionToSupabase(loc))).then(results => {
-            const newSynced = new Set(sbIds);
-            results.forEach((res, i) => {
-              if (res.status === 'fulfilled' && res.value && (res.value as any).success) {
-                newSynced.add(unsyncedLocals[i].id);
-              }
+        // Auto-sync existing locally stored inspections to Supabase backend when signed in
+        if (!user.isAnonymous) {
+          const unsyncedLocals = local.filter(loc => loc.id && !sbIds.has(loc.id));
+          if (unsyncedLocals.length > 0) {
+            Promise.allSettled(unsyncedLocals.map(loc => saveInspectionToSupabase({ ...loc, userId: user.uid }))).then(results => {
+              const newSynced = new Set(sbIds);
+              results.forEach((res, i) => {
+                if (res.status === 'fulfilled' && res.value && (res.value as any).success) {
+                  newSynced.add(unsyncedLocals[i].id);
+                }
+              });
+              setSupabaseSyncedIds(newSynced);
+            }).catch(err => {
+              console.warn("Background auto-sync of local checklists to Supabase:", err);
             });
-            setSupabaseSyncedIds(newSynced);
-          }).catch(err => {
-            console.warn("Background auto-sync of local checklists to Supabase:", err);
-          });
+          }
         }
       } catch (err) {
         console.warn("Error loading inspections, falling back to local:", err);
@@ -438,6 +451,15 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
   }, [user]);
 
   const handleManualCloudSync = async () => {
+    if (user.isAnonymous) {
+      setCloudSyncFeedback({
+        type: 'error',
+        message: 'You are in Offline Guest mode.',
+        details: 'Guest data stays only on this phone. Sign in with Google or Email to sync buildings and inspections across Desktop and Mobile.',
+      });
+      return;
+    }
+
     setCloudSyncing(true);
     setCloudSyncFeedback(null);
     try {
@@ -446,9 +468,14 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
         setCloudSyncFeedback({
           type: 'error',
           message: 'Supabase blocked cloud sync (Permission Denied).',
-          details: access.error || 'Row Level Security policy is restricting access for unauthenticated or guest sessions.',
+          details: access.error || 'Row Level Security policy is restricting access.',
         });
         return;
+      }
+
+      // Sync saved buildings/properties first (in case inspections reference property_id)
+      for (const prop of propertiesList) {
+        await savePropertyToSupabase({ ...prop, userId: user.uid }, user.uid);
       }
 
       let successCount = 0;
@@ -456,7 +483,7 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
       let lastErr = '';
 
       for (const item of inspections) {
-        const res = await saveInspectionToSupabase(item);
+        const res = await saveInspectionToSupabase({ ...item, userId: user.uid });
         if (res.success) {
           successCount++;
           setSupabaseSyncedIds(prev => new Set([...prev, item.id]));
@@ -469,7 +496,7 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
       if (failCount === 0) {
         setCloudSyncFeedback({
           type: 'success',
-          message: `All ${successCount} inspection(s) successfully synced to Supabase!`,
+          message: `Synced ${successCount} inspection(s) and ${propertiesList.length} building(s) to your account (${user.email || user.displayName})!`,
         });
       } else {
         setCloudSyncFeedback({
@@ -507,7 +534,7 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
     e.stopPropagation();
     if (!window.confirm(`Delete inspection "${label}"? This removes it from this device and cloud storage.`)) return;
 
-    removeLocalInspection(id);
+    removeLocalInspection(id, user.uid);
     setInspections(prev => prev.filter(item => item.id !== id));
     setSupabaseSyncedIds(prev => {
       const next = new Set(prev);
@@ -523,7 +550,11 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
 
   const handleDeleteProperty = async (prop: Property) => {
     if (!window.confirm(`Delete building/property "${prop.name}"? Existing unit inspections will remain, but the saved building template will be removed.`)) return;
-    setPropertiesList(prev => prev.filter(p => p.id !== prop.id));
+    setPropertiesList(prev => {
+      const next = prev.filter(p => p.id !== prop.id);
+      saveLocalProperties(user.uid, next);
+      return next;
+    });
     await deletePropertyFromSupabase(prop.id);
     try {
       await deleteDoc(doc(db, 'properties', prop.id));
@@ -868,12 +899,16 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
 
       {(editingProperty || showCreatePropertyModal) && (
         <PropertyModal
+          userUid={user.uid}
+          isAnonymous={user.isAnonymous}
           initialProperty={editingProperty}
           onClose={() => { setEditingProperty(null); setShowCreatePropertyModal(false); }}
           onSaved={(savedProp) => {
             setPropertiesList(prev => {
               const exists = prev.some(p => p.id === savedProp.id);
-              return exists ? prev.map(p => p.id === savedProp.id ? savedProp : p) : [...prev, savedProp];
+              const next = exists ? prev.map(p => p.id === savedProp.id ? savedProp : p) : [...prev, savedProp];
+              saveLocalProperties(user.uid, next);
+              return next;
             });
             setEditingProperty(null);
             setShowCreatePropertyModal(false);
@@ -948,23 +983,31 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
   useEffect(() => {
     async function loadData() {
       try {
-        // Load properties from Supabase & Firestore
-        let props: Property[] = [];
-        try {
-          props = await fetchPropertiesFromSupabase();
-        } catch (e) {
-          console.warn("Could not fetch Supabase properties:", e);
-        }
+        // Load properties scoped to this user (Supabase + localStorage cache)
+        const localProps = getLocalProperties(user.uid);
+        let props: Property[] = [...localProps];
+        if (!user.isAnonymous) {
+          try {
+            const sbProps = await fetchPropertiesFromSupabase(user.uid);
+            const propMap = new Map<string, Property>();
+            [...localProps, ...sbProps].forEach(p => { if (p && p.id) propMap.set(p.id, p); });
+            props = Array.from(propMap.values());
+          } catch (e) {
+            console.warn("Could not fetch Supabase properties:", e);
+          }
 
-        try {
-          const pSnap = await getDocs(collection(db, 'properties'));
-          pSnap.forEach(d => {
-            if (!props.some(x => x.id === d.id)) {
-              props.push({ id: d.id, ...d.data() } as Property);
-            }
-          });
-        } catch (e) {
-          console.warn("Could not fetch remote Firestore properties:", e);
+          try {
+            const pSnap = await getDocs(collection(db, 'properties'));
+            pSnap.forEach(d => {
+              const data = d.data() as any;
+              if ((!data.userId || data.userId === user.uid) && !props.some(x => x.id === d.id)) {
+                props.push({ id: d.id, ...data } as Property);
+              }
+            });
+          } catch (e) {
+            console.warn("Could not fetch remote Firestore properties:", e);
+          }
+          saveLocalProperties(user.uid, props);
         }
         setProperties(props);
 
@@ -1130,7 +1173,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
   const handleSave = async () => {
     setSaving(true);
     try {
-      const id = inspectionId || crypto.randomUUID();
+      const id = inspectionId || currentDraftId;
       const payload: Partial<Inspection> = {
         id,
         userId: user.uid, 
@@ -1157,7 +1200,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
         ...(inspectionId ? {} : { createdAt: Timestamp.now() })
       };
 
-      // 1. Always save to localStorage backup (offline-first)
+      // 1. Always save to localStorage backup (offline-first, scoped strictly to user.uid)
       try {
         const localList: any[] = JSON.parse(localStorage.getItem(`inspections_${user.uid}`) || '[]');
         const idx = localList.findIndex(x => x.id === id);
@@ -1172,13 +1215,20 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
           const sanitizedList = localList.map(item => ({ ...item, images: [] }));
           localStorage.setItem(`inspections_${user.uid}`, JSON.stringify(sanitizedList));
         }
+        localStorage.removeItem(`tryviet_active_draft_${user.uid}`);
       } catch (localErr) {
         console.warn("Local storage save error:", localErr);
       }
 
-      // 2. Save to Supabase backend (Lovable Cloud) for multi-device sync
-      try {
-        await saveInspectionToSupabase({
+      // 2. Save to Supabase backend when signed in (skip for Guest Inspector)
+      if (!user.isAnonymous) {
+        if (selectedPropertyId) {
+          const propObj = properties.find(p => p.id === selectedPropertyId);
+          if (propObj) {
+            await savePropertyToSupabase({ ...propObj, userId: user.uid }, user.uid);
+          }
+        }
+        const sbRes = await saveInspectionToSupabase({
           id,
           userId: user.uid,
           propertyId: selectedPropertyId,
@@ -1201,16 +1251,19 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
           labelOverrides,
           customFields,
         });
-      } catch (supabaseErr) {
-        console.warn("Supabase write failed:", supabaseErr);
+        if (!sbRes.success) {
+          alert(`Saved locally on this device, but cloud sync failed:\n${sbRes.error || 'Unknown error'}\n\nYou can retry with "Sync Cloud" on the Dashboard.`);
+        }
       }
 
       // 3. Try saving to Firestore as additional backup
-      try {
-        const docRef = doc(db, 'inspections', id);
-        await setDoc(docRef, payload, { merge: true });
-      } catch (firestoreErr) {
-        console.warn("Firestore write failed, saved locally and to Supabase:", firestoreErr);
+      if (!user.isAnonymous) {
+        try {
+          const docRef = doc(db, 'inspections', id);
+          await setDoc(docRef, payload, { merge: true });
+        } catch (firestoreErr) {
+          console.warn("Firestore write failed, saved locally and to Supabase:", firestoreErr);
+        }
       }
 
       onBack();
@@ -1376,7 +1429,11 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
                       const found = properties.find(p => p.id === selectedPropertyId);
                       if (!found) return;
                       if (!window.confirm(`Delete saved building "${found.name}"?`)) return;
-                      setProperties(prev => prev.filter(p => p.id !== found.id));
+                      setProperties(prev => {
+                        const next = prev.filter(p => p.id !== found.id);
+                        saveLocalProperties(user.uid, next);
+                        return next;
+                      });
                       setSelectedPropertyId('');
                       await deletePropertyFromSupabase(found.id);
                       try { await deleteDoc(doc(db, 'properties', found.id)); } catch {}
@@ -1865,7 +1922,7 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
                  type="button"
                  onClick={async () => {
                    if (!window.confirm(`Delete this inspection (${unitFloor || propertyName || 'Untitled'})?`)) return;
-                   removeLocalInspection(inspectionId);
+                   removeLocalInspection(inspectionId, user.uid);
                    await deleteInspectionFromSupabase(inspectionId);
                    try { await deleteDoc(doc(db, 'inspections', inspectionId)); } catch {}
                    onBack();
@@ -1884,12 +1941,16 @@ function ChecklistView({ user, inspectionId, onBack }: { user: AuthUser, inspect
 
       {(showPropertyModal || editingProperty) && (
         <PropertyModal
+          userUid={user.uid}
+          isAnonymous={user.isAnonymous}
           initialProperty={editingProperty}
           onClose={() => { setShowPropertyModal(false); setEditingProperty(null); }}
           onSaved={(p) => {
             setProperties(prev => {
               const exists = prev.some(item => item.id === p.id);
-              return exists ? prev.map(item => item.id === p.id ? p : item) : [...prev, p];
+              const next = exists ? prev.map(item => item.id === p.id ? p : item) : [...prev, p];
+              saveLocalProperties(user.uid, next);
+              return next;
             });
             setSelectedPropertyId(p.id);
             setPropertyName(p.name);
@@ -2277,7 +2338,7 @@ function SmartInput({ id, placeholder, options, ctx, autoVnd = false }: any) {
   );
 }
 
-function PropertyModal({ initialProperty, onClose, onSaved }: { initialProperty?: Property | null, onClose: () => void, onSaved: (p: Property) => void }) {
+function PropertyModal({ userUid, isAnonymous, initialProperty, onClose, onSaved }: { userUid: string, isAnonymous?: boolean, initialProperty?: Property | null, onClose: () => void, onSaved: (p: Property) => void }) {
   const isEdit = Boolean(initialProperty?.id);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState(initialProperty?.name || '');
@@ -2294,6 +2355,7 @@ function PropertyModal({ initialProperty, onClose, onSaved }: { initialProperty?
       const id = initialProperty?.id || crypto.randomUUID();
       const propertyItem: Property = { 
         id, 
+        userId: userUid,
         name, 
         address, 
         neighborhood, 
@@ -2302,22 +2364,25 @@ function PropertyModal({ initialProperty, onClose, onSaved }: { initialProperty?
         landlordZalo 
       };
 
-      // 1. Save to Supabase backend (Lovable Cloud)
-      try {
-        await savePropertyToSupabase(propertyItem);
-      } catch (supabaseErr) {
-        console.warn("Supabase save property failed:", supabaseErr);
+      // 1. Save to Supabase backend when signed in
+      if (!isAnonymous) {
+        const sbRes = await savePropertyToSupabase(propertyItem, userUid);
+        if (!sbRes.success) {
+          alert(`Saved building locally on this device, but cloud sync failed:\n${sbRes.error || 'Permission denied'}`);
+        }
       }
 
-      // 2. Try saving to Firestore
-      try {
-        await setDoc(doc(db, 'properties', id), {
-          ...propertyItem,
-          updatedAt: Timestamp.now(),
-          ...(isEdit ? {} : { createdAt: Timestamp.now() })
-        }, { merge: true });
-      } catch (firestoreErr) {
-        console.warn("Firestore property save failed (non-fatal):", firestoreErr);
+      // 2. Try saving to Firestore when signed in
+      if (!isAnonymous) {
+        try {
+          await setDoc(doc(db, 'properties', id), {
+            ...propertyItem,
+            updatedAt: Timestamp.now(),
+            ...(isEdit ? {} : { createdAt: Timestamp.now() })
+          }, { merge: true });
+        } catch (firestoreErr) {
+          console.warn("Firestore property save failed (non-fatal):", firestoreErr);
+        }
       }
 
       onSaved(propertyItem);
