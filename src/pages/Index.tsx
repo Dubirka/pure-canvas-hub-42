@@ -178,27 +178,19 @@ export default function Index() {
 }
 
 function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
 
   const handleEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setErrorMessage(null); setInfo(null);
+    setLoading(true); setErrorMessage(null);
     try {
-      if (mode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
-        if (error) throw error;
-        if (!data.session) setInfo('Check your email to confirm your account, then sign in.');
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
     } catch (err: any) {
-      setErrorMessage(err.message || 'Something went wrong.');
+      setErrorMessage(err.message || 'Invalid email or password.');
     } finally { setLoading(false); }
   };
 
@@ -207,7 +199,7 @@ function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
       <div className="w-16 h-16 mx-auto mb-5 flex items-center justify-center">
         <img src="/icons/icon.svg" alt="TryViet Logo" className="w-16 h-16 object-contain" />
       </div>
-      <h2 className="text-2xl font-bold mb-2">{mode === 'signin' ? 'Inspector Portal' : 'Create your account'}</h2>
+      <h2 className="text-2xl font-bold mb-2">Inspector Portal</h2>
       <p className="text-slate-500 mb-6">Sign in to manage your property inspections and save checklists securely.</p>
 
       {errorMessage && (
@@ -215,19 +207,15 @@ function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
           <ShieldAlert size={15} className="shrink-0 text-amber-600" /> {errorMessage}
         </div>
       )}
-      {info && <div className="mb-5 p-3.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-xs text-left">{info}</div>}
 
       <div className="space-y-3">
         <form onSubmit={handleEmail} className="space-y-3 text-left">
           <input type="email" required placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm" />
           <input type="password" required minLength={6} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm" />
           <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2">
-            {loading ? <Loader2 className="animate-spin" size={20} /> : (mode === 'signin' ? 'Sign in' : 'Sign up')}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : 'Sign in'}
           </button>
         </form>
-        <button type="button" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setErrorMessage(null); setInfo(null); }} className="text-sm text-blue-600 hover:underline">
-          {mode === 'signin' ? "No account? Sign up" : 'Already have an account? Sign in'}
-        </button>
 
         <button onClick={onGuestLogin} type="button" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-4 rounded-xl text-sm">
           Continue as Guest Inspector (Offline / Demo)
