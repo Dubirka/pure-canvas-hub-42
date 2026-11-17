@@ -1,11 +1,12 @@
 // TryViet Inspector PWA Service Worker
-const CACHE_NAME = 'tryviet-pwa-v2';
+const CACHE_NAME = 'tryviet-pwa-v3';
 
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
   '/favicon.svg',
+  '/favicon.ico',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

@@ -144,9 +144,7 @@ export default function Index() {
                 <ChevronLeft size={24} />
               </button>
             )}
-            <div className="bg-blue-600 p-2 rounded-xl text-white shadow-sm flex items-center justify-center shrink-0">
-              <Building size={20} />
-            </div>
+            <img src="/icons/icon.svg" alt="TryViet Logo" className="w-10 h-10 object-contain shrink-0" />
             <div>
               <h1 className="font-extrabold text-base sm:text-lg leading-tight tracking-tight text-slate-900">TryViet</h1>
               <p className="text-[11px] sm:text-xs text-slate-500 font-medium">Apartment Inspector</p>
@@ -206,8 +204,8 @@ function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
 
   return (
     <main className="max-w-md mx-auto mt-16 p-6 bg-white rounded-2xl shadow-sm border border-slate-200 text-center">
-      <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-        <Building size={32} />
+      <div className="w-16 h-16 mx-auto mb-5 flex items-center justify-center">
+        <img src="/icons/icon.svg" alt="TryViet Logo" className="w-16 h-16 object-contain" />
       </div>
       <h2 className="text-2xl font-bold mb-2">{mode === 'signin' ? 'Inspector Portal' : 'Create your account'}</h2>
       <p className="text-slate-500 mb-6">Sign in to manage your property inspections and save checklists securely.</p>
