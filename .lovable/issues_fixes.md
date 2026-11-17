@@ -66,3 +66,4 @@ This document records the bugs, root causes, and implemented fixes across the **
 ## 7. Overwhelming Checklist Scroll on Mobile (`ba6fd65`)
 * **Symptom:** Starting an inspection rendered all 8 sections permanently expanded in one long page.
 * **Fix:** Turned **`0. Building & Unit Details`**, sections **`1.`–`7.`**, and **`8. Inspector Summary & TryViet Verdict`** into collapsible accordions with **Expand All / Collapse All** controls and live **`X checked`** and photo count badges in section headers.
+

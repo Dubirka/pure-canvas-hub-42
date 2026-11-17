@@ -38,3 +38,4 @@
 1. Added custom neighborhood creation (`NeighborhoodSelect`) to both Building creation/editing and Inspection details (`5787b02`).
 2. Fixed cross-account local storage leakage on mobile and ensured Supabase cloud sync stamps the signed-in `user_id` on both properties and inspections (`484148e`).
 3. Added Edit & Delete capabilities for both saved Buildings/Properties and Unit Inspections (`f59596a`).
+
