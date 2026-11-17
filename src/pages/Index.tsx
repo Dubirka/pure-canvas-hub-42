@@ -4,7 +4,6 @@ import {
 } from 'lucide-react';
 import { db } from '../firebase';
 import { supabase } from '@/integrations/supabase/client';
-import { lovable } from '@/integrations/lovable/index';
 import { collection, query, where, getDocs, doc, setDoc, getDoc, deleteDoc, Timestamp, addDoc } from 'firebase/firestore';
 import { compressImage } from '../imageUtils';
 import { 
@@ -180,10 +179,6 @@ export default function Index() {
   );
 }
 
-const GoogleLogo = () => (
-  <svg aria-hidden="true" width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"/><path fill="#FBBC05" d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"/></svg>
-);
-
 function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -209,14 +204,6 @@ function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
     } finally { setLoading(false); }
   };
 
-  const handleGoogleSignIn = async () => {
-    setErrorMessage(null);
-    const result = await lovable.auth.signInWithOAuth('google', { redirect_uri: window.location.origin });
-    if (result.error) setErrorMessage(result.error.message || 'Sign-in failed.');
-  };
-
-  const providerBtn = "w-full h-11 px-3 rounded-xl flex items-center justify-center gap-2.5 text-sm font-medium transition-colors";
-
   return (
     <main className="max-w-md mx-auto mt-16 p-6 bg-white rounded-2xl shadow-sm border border-slate-200 text-center">
       <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
@@ -233,16 +220,6 @@ function LoginView({ onGuestLogin }: { onGuestLogin: () => void }) {
       {info && <div className="mb-5 p-3.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-xs text-left">{info}</div>}
 
       <div className="space-y-3">
-        <button type="button" onClick={handleGoogleSignIn} className={providerBtn} style={{ background: '#FFFFFF', border: '1px solid #747775', color: '#1F1F1F' }}>
-          <GoogleLogo /> Continue with Google
-        </button>
-
-        <div className="relative flex py-2 items-center">
-          <div className="flex-grow border-t border-slate-200"></div>
-          <span className="flex-shrink mx-3 text-xs text-slate-400 font-medium uppercase">Or with email</span>
-          <div className="flex-grow border-t border-slate-200"></div>
-        </div>
-
         <form onSubmit={handleEmail} className="space-y-3 text-left">
           <input type="email" required placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm" />
           <input type="password" required minLength={6} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm" />
@@ -455,7 +432,7 @@ function DashboardView({ user, onOpenChecklist }: { user: AuthUser, onOpenCheckl
       setCloudSyncFeedback({
         type: 'error',
         message: 'You are in Offline Guest mode.',
-        details: 'Guest data stays only on this phone. Sign in with Google or Email to sync buildings and inspections across Desktop and Mobile.',
+        details: 'Guest data stays only on this phone. Sign in with Email to sync buildings and inspections across Desktop and Mobile.',
       });
       return;
     }
